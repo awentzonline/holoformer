@@ -1,0 +1,13 @@
+*.pyc
+checkpoints/
+sample/
+*.egg-info
+venv/
+*.pyc
+__pycache__
+*.npy
+lightning_logs/
+*.pkl
+*.zip
+*.state
+.git

@@ -1,0 +1,6 @@
+datasets
+numpy
+torch
+tqdm
+transformers
+pytorch-lightning
