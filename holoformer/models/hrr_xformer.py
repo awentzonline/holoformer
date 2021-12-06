@@ -9,6 +9,7 @@ import torch.nn.functional as F
 
 from holoformer.datasets.hf_datasets import HfDatasetDataModule
 from holoformer.models import hrr
+from holoformer.models.position import PositionalEncoding
 
 
 def _get_clones(module, N):
@@ -76,6 +77,7 @@ class Holoformer(pl.LightningModule):
         self.embedding = nn.Embedding(
             num_tokens, data_dims, padding_idx=0,
         )
+        self.positional_encoding = PositionalEncoding(data_dims)
         self.output_token = nn.Linear(
             data_dims, num_tokens,
         )
@@ -90,6 +92,7 @@ class Holoformer(pl.LightningModule):
 
     def forward(self, x, **kwargs):
         embedded = self.embedding(x)
+        embedded = self.positional_encoding(embedded)
         y = self.encoder(embedded)
         return self.output_token(y)
 
