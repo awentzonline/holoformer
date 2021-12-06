@@ -104,6 +104,7 @@ class Holoformer(pl.LightningModule):
     def forward(self, x, **kwargs):
         embedded = self.embedding(x)
         embedded = self.positional_encoding(embedded)
+        embedded = hrr.unit_projection(embedded)
         y = self.encoder(embedded)
         return self.output_token(y)
 

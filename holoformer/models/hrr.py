@@ -18,7 +18,7 @@ def inverse(a):
 def unit_projection(a, eps=1e-5):
     a_hat = fft(a)
     a_hat = a_hat / (a_hat.abs() + eps)
-    return ifft(a_hat)
+    return torch.real(ifft(a_hat))
 
 def init(shape):
     a = torch.randn(*shape) / shape[-1]
