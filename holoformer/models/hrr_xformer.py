@@ -19,14 +19,25 @@ def _get_clones(module, N):
 class HolographicMixer(nn.Module):
     def __init__(self, dims):
         super().__init__()
+        self.query = nn.Sequential(
+            nn.Linear(dims, dims),
+            nn.LayerNorm(dims),
+        )
+        self.key = nn.Sequential(
+            nn.Linear(dims, dims),
+            nn.LayerNorm(dims),
+        )
 
     def forward(self, x):
         """
         x.shape ~= (batch, sequence, embedding)
         """
         s = x.sum(dim=1, keepdim=True)
-        values = hrr.unbind(s, x)
-        return values
+        query = self.query(x)
+        values = hrr.unbind(s, query)
+        updated_values = x + values
+        keys = self.key(updated_values)
+        return hrr.bind(keys, updated_values)
 
 
 class HoloformerFeedForward(nn.Module):
