@@ -32,12 +32,12 @@ class HolographicMixer(nn.Module):
         """
         x.shape ~= (batch, sequence, embedding)
         """
-        s = x.sum(dim=1, keepdim=True)
         query = self.query(x)
+        keys = self.key(x)
+        x = hrr.bind(keys, x)
+        s = x.sum(dim=1, keepdim=True)
         values = hrr.unbind(s, query)
-        updated_values = x + values
-        keys = self.key(updated_values)
-        return hrr.bind(keys, updated_values)
+        return x + values
 
 
 class HoloformerFeedForward(nn.Module):
