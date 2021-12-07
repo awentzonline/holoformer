@@ -80,6 +80,7 @@ class Holoformer(pl.LightningModule):
     def __init__(self, num_tokens, data_dims=100, ff_dims=512, layers=4,
                  lr=0.001, weight_decay=1e-5, dropout=0.1,
                  activation=nn.ReLU, pad_token_id=0, mask_token_id=1,
+                 update_embedding=False,
                  **kwargs):
         super().__init__()
         self.save_hyperparameters()
@@ -89,6 +90,9 @@ class Holoformer(pl.LightningModule):
         self.embedding = nn.Embedding(
             num_tokens, data_dims, padding_idx=pad_token_id,
         )
+        self.embedding.weight.data = hrr.init(self.embedding.weight.data.shape)
+        self.embedding.requires_grad_(update_embedding)
+
         self.positional_encoding = PositionalEncoding(data_dims)
         self.output_token = nn.Linear(
             data_dims, num_tokens,
