@@ -5,6 +5,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 import torch
 from torch import nn
+from torch.distributions import Normal
 import torch.nn.functional as F
 
 from holoformer.datasets.hf_datasets import HfDatasetDataModule
@@ -80,7 +81,7 @@ class Holoformer(pl.LightningModule):
     def __init__(self, num_tokens, data_dims=100, ff_dims=512, layers=4,
                  lr=0.001, weight_decay=1e-5, dropout=0.1,
                  activation=nn.ReLU, pad_token_id=0, mask_token_id=1,
-                 update_embedding=False,
+                 update_embedding=True,
                  vanilla=False,
                  **kwargs):
         super().__init__()
@@ -110,6 +111,8 @@ class Holoformer(pl.LightningModule):
         self.encoder = nn.TransformerEncoder(transformer_layer, layers)
         self.lr = lr
         self.weight_decay = weight_decay
+        self.hrr_dist = Normal(0., 1. / data_dims)
+        self.update_embedding = update_embedding
 
     def forward(self, x, **kwargs):
         embedded = self.embedding(x)
@@ -149,11 +152,16 @@ class Holoformer(pl.LightningModule):
             recon_tokens.permute(0, 2, 1), all_tokens
         )
 
+        embedding_loss = torch.tensor(0, device=self.device)
+        if self.update_embedding:
+            embedding_loss = hrr.unit_regularization(self.embedding.weight).mean()
+
         metrics = dict(
             loss=loss,
+            embedding_loss=embedding_loss
         )
         losses = dict(
-            loss=loss,
+            loss=loss + embedding_loss,
         )
         return metrics, losses
 
