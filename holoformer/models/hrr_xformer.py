@@ -81,6 +81,7 @@ class Holoformer(pl.LightningModule):
                  lr=0.001, weight_decay=1e-5, dropout=0.1,
                  activation=nn.ReLU, pad_token_id=0, mask_token_id=1,
                  update_embedding=False,
+                 vanilla=False,
                  **kwargs):
         super().__init__()
         self.save_hyperparameters()
@@ -97,12 +98,16 @@ class Holoformer(pl.LightningModule):
         self.output_token = nn.Linear(
             data_dims, num_tokens,
         )
-        self.encoder = nn.TransformerEncoder(
-            HoloformerEncoderLayer(
+        if vanilla:
+            transformer_layer = HoloformerEncoderLayer(
                 data_dims, ff_dims, dropout=dropout, activation=activation
-            ),
-            layers
-        )
+            )
+        else:
+            transformer_layer = nn.TransformerEncoderLayer(
+                data_dims, 1, dim_feedforward=ff_dims,
+                dropout=dropout
+            )
+        self.encoder = nn.TransformerEncoder(transformer_layer, layers)
         self.lr = lr
         self.weight_decay = weight_decay
 
@@ -166,6 +171,7 @@ class Holoformer(pl.LightningModule):
         p.add_argument('--weight_decay', default=1e-4, type=float)
         p.add_argument('--layers', default=4, type=int)
         p.add_argument('--dropout', default=0.1, type=float)
+        p.add_argument('--vanilla', action='store_true')
         return p
 
 
