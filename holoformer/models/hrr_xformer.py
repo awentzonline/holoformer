@@ -79,14 +79,15 @@ class HoloformerEncoderLayer(nn.Module):
 class Holoformer(pl.LightningModule):
     def __init__(self, num_tokens, data_dims=100, ff_dims=512, layers=4,
                  lr=0.001, weight_decay=1e-5, dropout=0.1,
-                 activation=nn.ReLU,
+                 activation=nn.ReLU, pad_token_id=0, mask_token_id=1,
                  **kwargs):
         super().__init__()
         self.save_hyperparameters()
         self.data_dims = data_dims
         self.ff_dims = ff_dims
+        self.mask_token_id = mask_token_id
         self.embedding = nn.Embedding(
-            num_tokens, data_dims, padding_idx=0,
+            num_tokens, data_dims, padding_idx=pad_token_id,
         )
         self.positional_encoding = PositionalEncoding(data_dims)
         self.output_token = nn.Linear(
@@ -123,17 +124,20 @@ class Holoformer(pl.LightningModule):
 
     def _shared_step(self, data, batch_idx):
         all_tokens = data['input_ids']
-        mask = torch.rand(*all_tokens.shape) < 0.15
+        mask = torch.rand(*all_tokens.shape, device=self.device) < 0.15
         masked_tokens = all_tokens.clone()
-        masked_tokens[mask] = 0
+        masked_tokens[mask] = self.mask_token_id
 
         recon_tokens = self(masked_tokens)
-        num_tokens = recon_tokens.shape[-1]
-        recon_tokens = torch.masked_select(recon_tokens, mask.unsqueeze(-1))
-        recon_tokens = recon_tokens.reshape(-1, num_tokens)
-        original_tokens = torch.masked_select(all_tokens, mask)
+        # num_tokens = recon_tokens.shape[-1]
+        # recon_tokens = torch.masked_select(recon_tokens, mask.unsqueeze(-1))
+        # recon_tokens = recon_tokens.reshape(-1, num_tokens)
+        # original_tokens = torch.masked_select(all_tokens, mask)
+        # loss = F.cross_entropy(
+        #     recon_tokens, original_tokens
+        # )
         loss = F.cross_entropy(
-            recon_tokens, original_tokens
+            recon_tokens.permute(0, 2, 1), all_tokens
         )
 
         metrics = dict(
@@ -178,7 +182,14 @@ if __name__ == '__main__':
     num_tokens = len(dm.tokenizer)
 
     print('Building model')
-    model = Holoformer(num_tokens=num_tokens, **vars(args))
+    mask_token_id, pad_token_id = dm.tokenizer.convert_tokens_to_ids([
+        '[MASK]', '[PAD]'
+    ])
+    model = Holoformer(
+        num_tokens=num_tokens, mask_token_id=mask_token_id,
+        pad_token_id=pad_token_id,
+        **vars(args)
+    )
 
     print('Set up Trainer')
     model_checkpoint = ModelCheckpoint()

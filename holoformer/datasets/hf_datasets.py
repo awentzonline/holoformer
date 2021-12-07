@@ -7,11 +7,12 @@ from transformers import AutoTokenizer, DataCollatorWithPadding
 class HfDatasetDataModule(pl.LightningDataModule):
     def __init__(self, dataset='wikitext/wikitext-2-raw-v1',
                  tokenizer='bert-base-uncased', batch_size=10,
-                 max_seq_len=256):
+                 max_seq_len=256, num_workers=0):
         super().__init__()
         self.dataset_name, self.dataset_config = dataset.split('/')
 
         self.batch_size = batch_size
+        self.num_workers = num_workers
         self.max_seq_length = max_seq_len
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer)
 
@@ -28,12 +29,14 @@ class HfDatasetDataModule(pl.LightningDataModule):
 
     def train_dataloader(self):
         return DataLoader(
-            self.dataset['train'], batch_size=self.batch_size
+            self.dataset['train'], batch_size=self.batch_size,
+            num_workers=self.num_workers
         )
 
     def val_dataloader(self):
         return DataLoader(
-            self.dataset['validation'], batch_size=self.batch_size
+            self.dataset['validation'], batch_size=self.batch_size,
+            num_workers=self.num_workers
         )
 
     def convert_to_features(self, example_batch, indices=None):
