@@ -10,7 +10,9 @@ import torch.nn.functional as F
 
 from holoformer.datasets.hf_datasets import HfDatasetDataModule
 from holoformer.models import hrr
-from holoformer.models.position import PositionalEncoding
+from holoformer.models.position import (
+    HolographicPositionalEncoding, PositionalEncoding
+)
 
 
 def _get_clones(module, N):
@@ -95,7 +97,11 @@ class Holoformer(pl.LightningModule):
         self.embedding.weight.data = hrr.init(self.embedding.weight.data.shape)
         self.embedding.requires_grad_(update_embedding)
 
-        self.positional_encoding = PositionalEncoding(data_dims)
+        self.vanilla = vanilla
+        if vanilla:
+            self.positional_encoding = PositionalEncoding(data_dims)
+        else:
+            self.positional_encoding = HolographicPositionalEncoding(data_dims)
         self.output_token = nn.Linear(
             data_dims, num_tokens,
         )
@@ -145,23 +151,29 @@ class Holoformer(pl.LightningModule):
         # recon_tokens = torch.masked_select(recon_tokens, mask.unsqueeze(-1))
         # recon_tokens = recon_tokens.reshape(-1, num_tokens)
         # original_tokens = torch.masked_select(all_tokens, mask)
-        # loss = F.cross_entropy(
+        # recon_loss = F.cross_entropy(
         #     recon_tokens, original_tokens
         # )
-        loss = F.cross_entropy(
+        recon_loss = F.cross_entropy(
             recon_tokens.permute(0, 2, 1), all_tokens
         )
 
         embedding_loss = torch.tensor(0, device=self.device)
+        positional_loss = torch.tensor(0, device=self.device)
         if self.update_embedding:
             embedding_loss = hrr.unit_regularization(self.embedding.weight).mean()
+            if not self.vanilla:
+                positional_loss = self.positional_encoding.loss(all_tokens).mean()
 
+        loss = recon_loss + embedding_loss + positional_loss
         metrics = dict(
             loss=loss,
-            embedding_loss=embedding_loss
+            recon_loss=recon_loss,
+            embedding_loss=embedding_loss,
+            positional_loss=positional_loss,
         )
         losses = dict(
-            loss=loss + embedding_loss,
+            loss=loss
         )
         return metrics, losses
 
