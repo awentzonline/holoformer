@@ -146,7 +146,7 @@ class HoloformerMLM(pl.LightningModule):
     def _shared_step(self, data, batch_idx):
         all_tokens = data['input_ids']
         mask = torch.rand(*all_tokens.shape, device=self.device)
-        mask = (mask < 0.15) * (mask != self.pad_token_id)
+        mask = (mask < 0.15) * (all_tokens != self.pad_token_id)
         masked_tokens = all_tokens.clone()
         masked_tokens[mask] = self.mask_token_id
 
