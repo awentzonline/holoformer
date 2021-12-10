@@ -181,12 +181,11 @@ class HoloformerMLM(pl.LightningModule):
         mask = torch.rand(*all_tokens.shape, device=self.device)
         mask = (mask < self.p_mask) * (all_tokens != self.pad_token_id)
         masked_tokens = all_tokens.clone()
-        premasked_indices = masked_tokens[mask]
         masked_tokens[mask] = self.mask_token_id
         random_mask = torch.rand(*all_tokens.shape, device=self.device)
-        random_mask = random_mask < self.p_random_mask * mask
+        random_mask = (random_mask < self.p_random_mask) * mask
         unmask = torch.rand(*all_tokens.shape, device=self.device)
-        unmask = unmask < self.p_unmask * mask
+        unmask = (unmask < self.p_unmask) * mask
         random_indices = torch.randint_like(all_tokens, 1, len(self.tokenizer))
         masked_tokens[random_mask] = random_indices[random_mask]
         masked_tokens[unmask] = all_tokens[unmask]
