@@ -43,7 +43,6 @@ class HfDatasetDataModule(pl.LightningDataModule):
 
     def convert_to_features(self, example_batch, indices=None):
         texts_or_text_pairs = example_batch['text']
-        print(texts_or_text_pairs)
         # Tokenize the text/text pairs
         features = self.tokenizer.batch_encode_plus(
             texts_or_text_pairs, max_length=self.max_seq_length,
