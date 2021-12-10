@@ -1,9 +1,17 @@
+import numpy as np
 import torch
 from pytorch_lightning.callbacks import Callback
 
 
 class EchoMLMTextBatch(Callback):
+    def __init__(self, p_print=0.01, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.p_print = p_print
+
     def on_train_batch_end(self, trainer, model, outputs, batch, *args, **kwargs):
+        if np.random.uniform() > self.p_print:
+            return
+
         all_tokens = batch['input_ids']
         mask = torch.rand(*all_tokens.shape, device=model.device) < 0.15
         masked_tokens = all_tokens.clone()
