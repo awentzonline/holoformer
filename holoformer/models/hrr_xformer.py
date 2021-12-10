@@ -123,6 +123,7 @@ class HoloformerMLM(pl.LightningModule):
         self.weight_decay = weight_decay
         self.hrr_dist = Normal(0., 1. / data_dims)
         self.update_embedding = update_embedding
+        self.ce_loss = nn.CrossEntropyLoss()
 
     def forward(self, x, **kwargs):
         embedded = self.embedding(x)
@@ -158,6 +159,7 @@ class HoloformerMLM(pl.LightningModule):
         # recon_loss = F.cross_entropy(
         #     recon_tokens, original_tokens
         # )
+        all_tokens[~mask] = -100  # Don't calculate loss for the unmasked
         recon_loss = F.cross_entropy(
             recon_tokens.permute(0, 2, 1), all_tokens
         )
