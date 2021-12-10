@@ -7,7 +7,7 @@ from transformers import AutoTokenizer, DataCollatorWithPadding
 class HfDatasetDataModule(pl.LightningDataModule):
     def __init__(self, dataset='wikitext/wikitext-2-raw-v1',
                  tokenizer_name='bert-base-uncased', batch_size=10,
-                 max_seq_len=256, num_workers=0):
+                 max_seq_len=256, num_workers=0, **kwargs):
         super().__init__()
         self.dataset_name, self.dataset_config = dataset.split('/')
 
