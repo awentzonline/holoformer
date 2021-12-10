@@ -194,7 +194,7 @@ class HoloformerMLM(pl.LightningModule):
         return masked_tokens, mask
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(
+        optimizer = torch.optim.AdamW(
             self.parameters(), lr=self.lr,  # weight_decay=self.weight_decay
         )
         return optimizer
@@ -208,6 +208,7 @@ class HoloformerMLM(pl.LightningModule):
         p.add_argument('--layers', default=4, type=int)
         p.add_argument('--dropout', default=0.1, type=float)
         p.add_argument('--vanilla', action='store_true')
+        p.add_argument('--batch_size', default=32, type=int)
         return p
 
 
@@ -223,7 +224,7 @@ if __name__ == '__main__':
     args = p.parse_args()
 
     print('Building DataModule')
-    dm = HfDatasetDataModule(args.dataset)
+    dm = HfDatasetDataModule(**vars(args))
     dm.setup('fit')
     num_tokens = len(dm.tokenizer)
 
