@@ -20,7 +20,9 @@ class HfDatasetDataModule(pl.LightningDataModule):
         self.dataset = datasets.load_dataset(self.dataset_name, self.dataset_config)
 
         for split in self.dataset.keys():
-            self.dataset[split] = self.dataset[split].filter()
+            self.dataset[split] = self.dataset[split].filter(
+                lambda x: len(x['text']) > 80
+            )
             self.dataset[split] = self.dataset[split].map(
                 self.convert_to_features,
                 batched=True,
@@ -41,6 +43,7 @@ class HfDatasetDataModule(pl.LightningDataModule):
 
     def convert_to_features(self, example_batch, indices=None):
         texts_or_text_pairs = example_batch['text']
+        print(texts_or_text_pairs)
         # Tokenize the text/text pairs
         features = self.tokenizer.batch_encode_plus(
             texts_or_text_pairs, max_length=self.max_seq_length,
