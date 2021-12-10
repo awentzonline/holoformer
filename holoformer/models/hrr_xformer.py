@@ -85,8 +85,8 @@ class HoloformerMLM(pl.LightningModule):
     def __init__(self, tokenizer, data_dims=100, ff_dims=512, layers=4,
                  lr=0.001, weight_decay=1e-5, dropout=0.1,
                  activation=nn.ReLU, pad_token_id=0, mask_token_id=1,
-                 update_embedding=True, p_mask=0.15, p_random_mask=0.02,
-                 p_unmask=0.02,
+                 update_embedding=True, p_mask=0.15, p_random_mask=0.2,
+                 p_unmask=0.2,
                  vanilla=False,
                  **kwargs):
         super().__init__()
@@ -151,7 +151,7 @@ class HoloformerMLM(pl.LightningModule):
     def _shared_step(self, data, batch_idx):
         all_tokens = data['input_ids']
         masked_tokens, mask = self.mask_tokens(all_tokens)
-        
+
         recon_tokens = self(masked_tokens)
         all_tokens[~mask] = -100  # Don't calculate loss for the unmasked
         recon_loss = F.cross_entropy(
