@@ -12,7 +12,7 @@ class EchoMLMTextBatch(Callback):
         if np.random.uniform() > self.p_print:
             return
 
-        all_tokens = batch['input_ids']
+        all_tokens = batch['input_ids'].to(model.device)
         mask = torch.rand(*all_tokens.shape, device=model.device) < 0.15
         masked_tokens = all_tokens.clone()
         masked_tokens[mask] = model.mask_token_id
