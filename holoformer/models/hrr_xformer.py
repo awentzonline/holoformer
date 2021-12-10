@@ -38,8 +38,8 @@ class HolographicMixer(nn.Module):
         """
         query = self.query(x)
         keys = self.key(x)
-        x = hrr.bind(keys, x)
-        s = x.sum(dim=1, keepdim=True)
+        x_k = hrr.bind(keys, x)
+        s = x_k.sum(dim=1, keepdim=True)
         values = hrr.unbind(s, query)
         return x + values
 
@@ -94,6 +94,7 @@ class HoloformerMLM(pl.LightningModule):
         self.data_dims = data_dims
         self.ff_dims = ff_dims
         self.mask_token_id = mask_token_id
+        self.pad_token_id = pad_token_id
         self.embedding = nn.Embedding(
             len(tokenizer), data_dims, padding_idx=pad_token_id,
         )
