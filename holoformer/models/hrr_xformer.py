@@ -85,7 +85,8 @@ class HoloformerMLM(pl.LightningModule):
     def __init__(self, tokenizer, data_dims=100, ff_dims=512, layers=4,
                  lr=0.001, weight_decay=1e-5, dropout=0.1,
                  activation=nn.ReLU, pad_token_id=0, mask_token_id=1,
-                 update_embedding=True,
+                 update_embedding=True, p_mask=0.15, p_random_mask=0.02,
+                 p_unmask=0.02,
                  vanilla=False,
                  **kwargs):
         super().__init__()
@@ -93,6 +94,9 @@ class HoloformerMLM(pl.LightningModule):
         self.tokenizer = tokenizer
         self.data_dims = data_dims
         self.ff_dims = ff_dims
+        self.p_mask = p_mask
+        self.p_random_mask = p_random_mask
+        self.p_unmask = p_unmask
         self.mask_token_id = mask_token_id
         self.pad_token_id = pad_token_id
         self.embedding = nn.Embedding(
@@ -146,19 +150,9 @@ class HoloformerMLM(pl.LightningModule):
 
     def _shared_step(self, data, batch_idx):
         all_tokens = data['input_ids']
-        mask = torch.rand(*all_tokens.shape, device=self.device)
-        mask = (mask < 0.15) * (all_tokens != self.pad_token_id)
-        masked_tokens = all_tokens.clone()
-        masked_tokens[mask] = self.mask_token_id
-
+        masked_tokens, mask = self.mask_tokens(all_tokens)
+        
         recon_tokens = self(masked_tokens)
-        # num_tokens = recon_tokens.shape[-1]
-        # recon_tokens = torch.masked_select(recon_tokens, mask.unsqueeze(-1))
-        # recon_tokens = recon_tokens.reshape(-1, num_tokens)
-        # original_tokens = torch.masked_select(all_tokens, mask)
-        # recon_loss = F.cross_entropy(
-        #     recon_tokens, original_tokens
-        # )
         all_tokens[~mask] = -100  # Don't calculate loss for the unmasked
         recon_loss = F.cross_entropy(
             recon_tokens.permute(0, 2, 1), all_tokens
@@ -182,6 +176,21 @@ class HoloformerMLM(pl.LightningModule):
             loss=loss
         )
         return metrics, losses
+
+    def mask_tokens(self, all_tokens):
+        mask = torch.rand(*all_tokens.shape, device=self.device)
+        mask = (mask < self.p_mask) * (all_tokens != self.pad_token_id)
+        masked_tokens = all_tokens.clone()
+        premasked_indices = masked_tokens[mask]
+        masked_tokens[mask] = self.mask_token_id
+        random_mask = torch.rand(*all_tokens.shape, device=self.device)
+        random_mask = random_mask < self.p_random_mask * mask
+        unmask = torch.rand(*all_tokens.shape, device=self.device)
+        unmask = unmask < self.p_unmask * mask
+        random_indices = torch.randint_like(all_tokens, 1, len(self.tokenizer))
+        masked_tokens[random_mask] = random_indices[random_mask]
+        masked_tokens[unmask] = all_tokens[unmask]
+        return masked_tokens, mask
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
