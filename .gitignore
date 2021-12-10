@@ -16,3 +16,4 @@ runs/
 lightning_logs
 ./models
 output/*
+logs

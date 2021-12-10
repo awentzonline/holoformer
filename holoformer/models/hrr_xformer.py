@@ -10,6 +10,7 @@ import torch.nn.functional as F
 
 from holoformer.datasets.hf_datasets import HfDatasetDataModule
 from holoformer.models import hrr
+from holoformer.models.callbacks.mlm import EchoMLMTextBatch
 from holoformer.models.position import (
     HolographicPositionalEncoding, PositionalEncoding
 )
@@ -74,13 +75,14 @@ class HoloformerEncoderLayer(nn.Module):
         self.norm1 = nn.LayerNorm(dims)
 
     def forward(self, x, **kwargs):
-        x = self.norm0(x + self.mixer(x))
-        x = self.norm1(x + self.feed_forward(x))
-        return x
+        return self.mixer(x)
+        # x = self.norm0(x + self.mixer(x))
+        # x = self.norm1(x + self.feed_forward(x))
+        # return x
 
 
-class Holoformer(pl.LightningModule):
-    def __init__(self, num_tokens, data_dims=100, ff_dims=512, layers=4,
+class HoloformerMLM(pl.LightningModule):
+    def __init__(self, tokenizer, data_dims=100, ff_dims=512, layers=4,
                  lr=0.001, weight_decay=1e-5, dropout=0.1,
                  activation=nn.ReLU, pad_token_id=0, mask_token_id=1,
                  update_embedding=True,
@@ -88,11 +90,12 @@ class Holoformer(pl.LightningModule):
                  **kwargs):
         super().__init__()
         self.save_hyperparameters()
+        self.tokenizer = tokenizer
         self.data_dims = data_dims
         self.ff_dims = ff_dims
         self.mask_token_id = mask_token_id
         self.embedding = nn.Embedding(
-            num_tokens, data_dims, padding_idx=pad_token_id,
+            len(tokenizer), data_dims, padding_idx=pad_token_id,
         )
         self.embedding.weight.data = hrr.init(self.embedding.weight.data.shape)
         self.embedding.requires_grad_(update_embedding)
@@ -123,7 +126,6 @@ class Holoformer(pl.LightningModule):
     def forward(self, x, **kwargs):
         embedded = self.embedding(x)
         embedded = self.positional_encoding(embedded)
-        embedded = hrr.unit_projection(embedded)
         y = self.encoder(embedded)
         return self.output_token(y)
 
@@ -200,9 +202,9 @@ if __name__ == '__main__':
 
     p = argparse.ArgumentParser()
     p.add_argument('dataset')
-    p.add_argument('tokenizer')
+    p.add_argument('tokenizer_name')
 
-    p = Holoformer.add_argparse_args(p)
+    p = HoloformerMLM.add_argparse_args(p)
     p = pl.Trainer.add_argparse_args(p)
     args = p.parse_args()
 
@@ -215,7 +217,8 @@ if __name__ == '__main__':
     mask_token_id, pad_token_id = dm.tokenizer.convert_tokens_to_ids([
         '[MASK]', '[PAD]'
     ])
-    model = Holoformer(
+    model = HoloformerMLM(
+        tokenizer=dm.tokenizer,
         num_tokens=num_tokens, mask_token_id=mask_token_id,
         pad_token_id=pad_token_id,
         **vars(args)
@@ -223,7 +226,7 @@ if __name__ == '__main__':
 
     print('Set up Trainer')
     model_checkpoint = ModelCheckpoint()
-    callbacks = [model_checkpoint]
+    callbacks = [model_checkpoint, EchoMLMTextBatch()]
     trainer = pl.Trainer.from_argparse_args(
         args, callbacks=callbacks
     )
