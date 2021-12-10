@@ -6,6 +6,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 import torch
 from torch import nn
 from torch.distributions import Normal
+from torch.optim.lr_scheduler import LambdaLR
 import torch.nn.functional as F
 
 from holoformer.datasets.hf_datasets import HfDatasetDataModule
@@ -86,7 +87,7 @@ class HoloformerMLM(pl.LightningModule):
                  lr=0.001, weight_decay=1e-5, dropout=0.1,
                  activation=nn.ReLU, pad_token_id=0, mask_token_id=1,
                  update_embedding=True, p_mask=0.15, p_random_mask=0.2,
-                 p_unmask=0.2,
+                 p_unmask=0.2, lr_warmup_steps=3,
                  vanilla=False,
                  **kwargs):
         super().__init__()
@@ -151,7 +152,6 @@ class HoloformerMLM(pl.LightningModule):
     def _shared_step(self, data, batch_idx):
         all_tokens = data['input_ids']
         masked_tokens, mask = self.mask_tokens(all_tokens)
-
         recon_tokens = self(masked_tokens)
         all_tokens[~mask] = -100  # Don't calculate loss for the unmasked
         recon_loss = F.cross_entropy(
@@ -197,7 +197,33 @@ class HoloformerMLM(pl.LightningModule):
         optimizer = torch.optim.Adam(
             self.parameters(), lr=self.lr,  # weight_decay=self.weight_decay
         )
-        return optimizer
+
+        def lr_update(epoch):
+            if epoch < self.hparams.lr_warmup_steps:
+                # warm up lr
+                lr_scale = 0.1 ** (self.hparams.lr_warmup_steps - epoch)
+            else:
+                lr_scale = 0.95 ** epoch
+
+            return lr_scale
+
+        scheduler = LambdaLR(
+            optimizer,
+            lr_lambda=lr_update
+        )
+
+        return (
+            [optimizer],
+            [
+                {
+                    'scheduler': scheduler,
+                    'interval': 'step',
+                    'frequency': 1,
+                    'reduce_on_plateau': False,
+                    'monitor': 'loss',
+                }
+            ]
+        )
 
     @classmethod
     def add_argparse_args(self, p):
@@ -208,6 +234,7 @@ class HoloformerMLM(pl.LightningModule):
         p.add_argument('--layers', default=4, type=int)
         p.add_argument('--dropout', default=0.1, type=float)
         p.add_argument('--vanilla', action='store_true')
+        p.add_argument('--lr_warmup_steps', default=3, type=int)
         return p
 
 
