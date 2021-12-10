@@ -217,7 +217,7 @@ class HoloformerMLM(pl.LightningModule):
             [
                 {
                     'scheduler': scheduler,
-                    'interval': 'step',
+                    'interval': 'epoch',
                     'frequency': 1,
                     'reduce_on_plateau': False,
                     'monitor': 'loss',
