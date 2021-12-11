@@ -31,6 +31,6 @@ class EchoMLMReducedTextBatch(Callback):
         all_tokens = batch['input_ids'].to(model.device)
         masked_tokens, _ = model.mask_tokens(all_tokens)
         recon_tokens = model(masked_tokens)[0]
-        # TODO: decode from reduced rep?
+        recon_tokens = model.lookup_embeddings(recon_tokens)
         recon_tokens = torch.argmax(recon_tokens, dim=-1)
         print(model.tokenizer.decode(recon_tokens))

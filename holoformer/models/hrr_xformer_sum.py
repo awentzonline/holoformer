@@ -11,7 +11,7 @@ import torch.nn.functional as F
 
 from holoformer.datasets.hf_datasets import HfDatasetDataModule
 from holoformer.models import hrr
-from holoformer.models.callbacks.mlm import EchoMLMTextBatch
+from holoformer.models.callbacks.mlm import EchoMLMReducedTextBatch
 from holoformer.models.position import (
     HolographicPositionalEncoding, PositionalEncoding
 )
@@ -139,12 +139,26 @@ class HoloformerMLM(pl.LightningModule):
     def forward(self, x, **kwargs):
         embedded = self.embed_sequence(x)
         y = self.encoder(embedded)
-        return self.output_token(y)
+        return y #self.output_token(y)
 
     def embed_sequence(self, x):
         embedded = self.embedding(x)
         embedded = self.positional_encoding(embedded)
         return embedded
+
+    def expand_reduced_sequence(self, s, indices=None, length=200):
+        if indices is None:
+            indices = torch.arange(length).long()
+        position_embeddings = self.positional_encoding.get_embeddings(indices)
+        s = s.unsqueeze(1)
+        values = hrr.unbind(s.unsqueeze(1), position_embeddings)
+        return values
+
+    def lookup_embeddings(self, values):
+        e = self.embedding.weight.T
+        #values = values.unsqueeze(0)
+        scores = torch.matmul(values, e)
+        return scores
 
     def training_step(self, batch, batch_idx):
         metrics, losses = self._shared_step(batch, batch_idx)
@@ -282,7 +296,7 @@ if __name__ == '__main__':
 
     print('Set up Trainer')
     model_checkpoint = ModelCheckpoint()
-    callbacks = [model_checkpoint, EchoMLMTextBatch()]
+    callbacks = [model_checkpoint, EchoMLMReducedTextBatch()]
     trainer = pl.Trainer.from_argparse_args(
         args, callbacks=callbacks
     )

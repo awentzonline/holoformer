@@ -45,3 +45,6 @@ class HolographicPositionalEncoding(nn.Module):
         seq_len = x.shape[1]
         embeddings = self.embeddings[:, :seq_len]
         return hrr.unit_regularization(embeddings)
+
+    def get_embeddings(self, indices):
+        return self.embeddings[:, indices]
