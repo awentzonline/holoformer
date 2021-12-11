@@ -196,16 +196,15 @@ class HoloformerMLM(pl.LightningModule):
         mask = (mask < self.p_mask) * (all_tokens != self.pad_token_id)
         masked_tokens = all_tokens.clone()
         masked_tokens[mask] = self.mask_token_id
+        # leave some tokens unmasked
+        unmask = torch.rand_like(all_tokens, dtype=torch.float32)
+        unmask = (unmask < self.p_unmask) * mask
+        masked_tokens[unmask] = all_tokens[unmask]
         # assign random tokens
         random_mask = torch.rand_like(all_tokens, dtype=torch.float32)
         random_mask = (random_mask < self.p_random_mask) * mask
         random_indices = torch.randint_like(all_tokens, 1, len(self.tokenizer))
         masked_tokens[random_mask] = random_indices[random_mask]
-        # leave some tokens unmasked
-        unmask = torch.rand_like(all_tokens, dtype=torch.float32)
-        unmask = (unmask < self.p_unmask) * mask
-        masked_tokens[unmask] = all_tokens[unmask]
-        # print(unmask.sum(), random_mask.sum(), mask.sum(), (unmask*random_mask).sum())
         return masked_tokens, mask
 
     def configure_optimizers(self):
