@@ -22,14 +22,20 @@ def _get_clones(module, N):
 
 
 class HolographicMixer(nn.Module):
-    def __init__(self, dims):
+    def __init__(self, dims, ff_dims):
         super().__init__()
         self.query = nn.Sequential(
             nn.Linear(dims, dims),
+            # nn.Linear(dims, ff_dims),
+            # nn.ReLU(),
+            # nn.Linear(ff_dims, dims),
             nn.LayerNorm(dims),
         )
         self.key = nn.Sequential(
             nn.Linear(dims, dims),
+            # nn.Linear(dims, ff_dims),
+            # nn.ReLU(),
+            # nn.Linear(ff_dims, dims),
             nn.LayerNorm(dims),
         )
 
@@ -42,6 +48,7 @@ class HolographicMixer(nn.Module):
         x_k = hrr.bind(keys, x)
         s = x_k.sum(dim=1, keepdim=True)
         values = hrr.unbind(s, query)
+        return hrr.bind(x, values)
         return x + values
 
 
@@ -64,7 +71,7 @@ class HoloformerEncoderLayer(nn.Module):
     def __init__(self, dims, ff_dims, dropout, activation=nn.ReLU, **kwargs):
         super().__init__()
         self.mixer = nn.Sequential(
-            HolographicMixer(dims),
+            HolographicMixer(dims, ff_dims),
             nn.Dropout(dropout),
         )
         self.feed_forward = nn.Sequential(
@@ -183,12 +190,12 @@ class HoloformerMLM(pl.LightningModule):
         masked_tokens = all_tokens.clone()
         masked_tokens[mask] = self.mask_token_id
         # assign random tokens
-        random_mask = torch.rand(*all_tokens.shape, device=self.device)
+        random_mask = torch.rand_like(all_tokens, dtype=torch.float32)
         random_mask = (random_mask < self.p_random_mask) * mask
         random_indices = torch.randint_like(all_tokens, 1, len(self.tokenizer))
         masked_tokens[random_mask] = random_indices[random_mask]
         # leave some tokens unmasked
-        unmask = torch.rand(*all_tokens.shape, device=self.device)
+        unmask = torch.rand_like(all_tokens, dtype=torch.float32)
         unmask = (unmask < self.p_unmask) * mask
         masked_tokens[unmask] = all_tokens[unmask]
         return masked_tokens, mask
@@ -197,7 +204,7 @@ class HoloformerMLM(pl.LightningModule):
         optimizer = torch.optim.AdamW(
             self.parameters(), lr=self.lr,  # weight_decay=self.weight_decay
         )
-
+        return optimizer
         def lr_update(epoch):
             if epoch < self.hparams.lr_warmup_steps:
                 # warm up lr
