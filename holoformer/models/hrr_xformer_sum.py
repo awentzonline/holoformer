@@ -168,7 +168,7 @@ class HoloformerMLM(pl.LightningModule):
         embedding_loss = torch.tensor(0, device=self.device)
         positional_loss = torch.tensor(0, device=self.device)
         if self.update_embedding:
-            embedding_loss = hrr.unit_regularization(self.embedding.weight).mean()
+            embedding_loss = hrr.unit_regularization(self.embedding(all_tokens)).mean()
             positional_loss = self.positional_encoding.loss(all_tokens).mean()
 
         loss = recon_loss + embedding_loss + positional_loss
