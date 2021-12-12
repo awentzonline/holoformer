@@ -161,7 +161,6 @@ class HoloformerMLM(pl.LightningModule):
     def lookup_embeddings(self, values):
         e = self.embedding.weight.T
         scores = torch.matmul(values, e)
-        scores /= (torch.norm(scores, dim=-1, keepdim=True) + 1e-8)
         return scores
 
     def training_step(self, batch, batch_idx):
