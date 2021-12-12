@@ -95,7 +95,6 @@ class HoloformerMLM(pl.LightningModule):
                  activation=nn.ReLU, pad_token_id=0, mask_token_id=1,
                  update_embedding=True, p_mask=0.15, p_random_mask=0.2,
                  p_unmask=0.2, lr_warmup_steps=3,
-                 vanilla=False,
                  **kwargs):
         super().__init__()
         self.save_hyperparameters()
@@ -113,23 +112,13 @@ class HoloformerMLM(pl.LightningModule):
         self.embedding.weight.data = hrr.init(self.embedding.weight.data.shape)
         self.embedding.requires_grad_(update_embedding)
 
-        self.vanilla = vanilla
-        if vanilla:
-            self.positional_encoding = PositionalEncoding(data_dims)
-        else:
-            self.positional_encoding = HolographicPositionalEncoding(data_dims)
+        self.positional_encoding = HolographicPositionalEncoding(data_dims)
         self.output_token = nn.Linear(
             data_dims, num_tokens,
         )
-        if vanilla:
-            transformer_layer = HoloformerEncoderLayer(
-                data_dims, ff_dims, dropout=dropout, activation=activation
-            )
-        else:
-            transformer_layer = nn.TransformerEncoderLayer(
-                data_dims, 1, dim_feedforward=ff_dims,
-                dropout=dropout
-            )
+        transformer_layer = HoloformerEncoderLayer(
+            data_dims, ff_dims, dropout=dropout, activation=activation
+        )
         self.encoder = nn.TransformerEncoder(transformer_layer, layers)
         self.lr = lr
         self.weight_decay = weight_decay
@@ -169,8 +158,7 @@ class HoloformerMLM(pl.LightningModule):
         positional_loss = torch.tensor(0, device=self.device)
         if self.update_embedding:
             embedding_loss = hrr.unit_regularization(self.embedding.weight).mean()
-            if not self.vanilla:
-                positional_loss = self.positional_encoding.loss(all_tokens).mean()
+            positional_loss = self.positional_encoding.loss(all_tokens).mean()
 
         loss = recon_loss + embedding_loss + positional_loss
         metrics = dict(
@@ -240,7 +228,6 @@ class HoloformerMLM(pl.LightningModule):
         p.add_argument('--weight_decay', default=1e-4, type=float)
         p.add_argument('--layers', default=4, type=int)
         p.add_argument('--dropout', default=0.1, type=float)
-        p.add_argument('--vanilla', action='store_true')
         p.add_argument('--batch_size', default=32, type=int)
         p.add_argument('--lr_warmup_steps', default=3, type=int)
         return p
