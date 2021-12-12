@@ -72,7 +72,6 @@ class HoloformerEncoder(nn.Module):
         self.num_layers = num_layers
 
     def forward(self, x):
-        print('start layers...')
         for mod in self.layers:
             x = mod(x)
         return x
@@ -160,7 +159,6 @@ class HoloformerMLM(pl.LightningModule):
         masked_tokens, mask = self.mask_tokens(all_tokens)
         embedded_sequence = self.embed_sequence(masked_tokens)
         recon_tokens = self.encoder(embedded_sequence)
-        print('rt', torch.isnan(recon_tokens).sum())
         s_recon_tokens = recon_tokens.sum(dim=1)
         s_target_tokens = embedded_sequence.sum(dim=1)
 
