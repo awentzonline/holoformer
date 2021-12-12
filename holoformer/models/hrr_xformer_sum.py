@@ -154,9 +154,12 @@ class HoloformerMLM(pl.LightningModule):
         values = hrr.unbind(s.unsqueeze(1), position_embeddings)
         return values
 
+    def unbind_position_embeddings(self, values):
+        position_embeddings = self.positional_encoding.get_embeddings(indices)
+
+
     def lookup_embeddings(self, values):
         e = self.embedding.weight.T
-        #values = values.unsqueeze(0)
         scores = torch.matmul(values, e)
         return scores
 
