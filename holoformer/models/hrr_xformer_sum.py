@@ -45,8 +45,8 @@ class HolographicMixer(nn.Module):
         """
         x.shape ~= (batch, sequence, embedding)
         """
-        query = self.query(x)
-        keys = self.key(x)
+        query = self.query(x) / x.shape[-1]
+        keys = self.key(x) / x.shape[-1]
         x_k = hrr.bind(keys, x)
         s = x_k.sum(dim=1, keepdim=True)
         values = hrr.unbind(s, query)

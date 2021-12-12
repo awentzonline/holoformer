@@ -32,7 +32,7 @@ class EchoMLMReducedTextBatch(Callback):
         masked_tokens, _ = model.mask_tokens(all_tokens)
         recon_tokens = model(masked_tokens)
         recon_tokens = model.positional_encoding.unbind_positions(recon_tokens)
-        recon_tokens /= (torch.norm(recon_tokens, dim=-1, keepdim=True) + 1e-8)
+        recon_tokens = recon_tokens / (torch.norm(recon_tokens, dim=-1, keepdim=True) + 1e-8)
         recon_tokens = model.lookup_embeddings(recon_tokens[0])
         recon_tokens = torch.argmax(recon_tokens, dim=-1)
         print(model.tokenizer.decode(recon_tokens))
