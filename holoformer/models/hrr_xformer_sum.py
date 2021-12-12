@@ -29,14 +29,16 @@ class HolographicMixer(nn.Module):
             # nn.Linear(dims, ff_dims),
             # nn.ReLU(),
             # nn.Linear(ff_dims, dims),
-            nn.LayerNorm(dims),
+            nn.Tanh(),
+            #nn.LayerNorm(dims),
         )
         self.key = nn.Sequential(
             nn.Linear(dims, dims),
             # nn.Linear(dims, ff_dims),
             # nn.ReLU(),
             # nn.Linear(ff_dims, dims),
-            nn.LayerNorm(dims),
+            nn.Tanh(),
+            #nn.LayerNorm(dims),
         )
 
     def forward(self, x):
@@ -51,21 +53,6 @@ class HolographicMixer(nn.Module):
         return x + values
 
 
-class HoloformerFeedForward(nn.Module):
-    def __init__(self, dims, ff_dims, dropout=0.1, activation=nn.ReLU):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(dims, ff_dims),
-            activation(),
-            nn.Dropout(dropout),
-            nn.Linear(ff_dims, dims),
-            nn.Dropout(dropout),
-        )
-
-    def forward(self, x):
-        return self.net(x)
-
-
 class HoloformerEncoderLayer(nn.Module):
     def __init__(self, dims, ff_dims, dropout, activation=nn.ReLU, **kwargs):
         super().__init__()
@@ -73,19 +60,9 @@ class HoloformerEncoderLayer(nn.Module):
             HolographicMixer(dims, ff_dims),
             nn.Dropout(dropout),
         )
-        self.feed_forward = nn.Sequential(
-            HoloformerFeedForward(
-                dims, ff_dims, dropout=dropout, activation=activation
-            ),
-        )
-        self.norm0 = nn.LayerNorm(dims)
-        self.norm1 = nn.LayerNorm(dims)
 
     def forward(self, x, **kwargs):
         return self.mixer(x)
-        # x = self.norm0(x + self.mixer(x))
-        # x = self.norm1(x + self.feed_forward(x))
-        # return x
 
 
 class HoloformerEncoder(nn.Module):
@@ -95,6 +72,7 @@ class HoloformerEncoder(nn.Module):
         self.num_layers = num_layers
 
     def forward(self, x):
+        print('start layers...')
         for mod in self.layers:
             x = mod(x)
         return x
@@ -144,7 +122,7 @@ class HoloformerMLM(pl.LightningModule):
 
     def embed_sequence(self, x):
         embedded = self.embedding(x)
-        embedded = self.positional_encoding(embedded)
+        #embedded = self.positional_encoding(embedded)
         return embedded
 
     def expand_reduced_sequence(self, s, indices=None, length=200):
@@ -182,14 +160,13 @@ class HoloformerMLM(pl.LightningModule):
         masked_tokens, mask = self.mask_tokens(all_tokens)
         embedded_sequence = self.embed_sequence(masked_tokens)
         recon_tokens = self.encoder(embedded_sequence)
-
+        print('rt', torch.isnan(recon_tokens).sum())
         s_recon_tokens = recon_tokens.sum(dim=1)
         s_target_tokens = embedded_sequence.sum(dim=1)
 
         recon_loss = F.mse_loss(
             s_recon_tokens, s_target_tokens
         )
-
         embedding_loss = torch.tensor(0, device=self.device)
         positional_loss = torch.tensor(0, device=self.device)
         if self.update_embedding:

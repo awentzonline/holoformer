@@ -35,4 +35,5 @@ def unit_regularization(v):
     v_hat = v_hat * v_hat.abs()
     x = torch.real(ifft(v_hat))
     dist = Normal(0., 1. / v.shape[-1])
-    return -dist.log_prob(x)
+    nlp = -dist.log_prob(x)
+    return nlp
