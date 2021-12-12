@@ -115,7 +115,7 @@ class HoloformerMLM(pl.LightningModule):
         return losses
 
     def _shared_step(self, data, batch_idx):
-        all_tokens = data['input_ids']
+        all_tokens = data['input_ids'].clone()
         masked_tokens, mask = self.mask_tokens(all_tokens)
         recon_tokens = self(masked_tokens)
         all_tokens[~mask] = -100  # Don't calculate loss for the unmasked
