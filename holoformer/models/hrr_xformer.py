@@ -26,45 +26,24 @@ class HolographicMixer(nn.Module):
         super().__init__()
         self.query = nn.Sequential(
             nn.Linear(dims, dims),
-            # nn.Linear(dims, ff_dims),
-            # nn.ReLU(),
-            # nn.Linear(ff_dims, dims),
-            nn.LayerNorm(dims),
+            nn.Tanh(),
         )
         self.key = nn.Sequential(
             nn.Linear(dims, dims),
-            # nn.Linear(dims, ff_dims),
-            # nn.ReLU(),
-            # nn.Linear(ff_dims, dims),
-            nn.LayerNorm(dims),
+            nn.Tanh(),
         )
 
     def forward(self, x):
         """
         x.shape ~= (batch, sequence, embedding)
         """
-        query = self.query(x)
-        keys = self.key(x)
+        query = self.query(x) / x.shape[-1]
+        keys = self.key(x) / x.shape[-1]
         x_k = hrr.bind(keys, x)
         s = x_k.sum(dim=1, keepdim=True)
         values = hrr.unbind(s, query)
         return hrr.bind(x, values)
         return x + values
-
-
-class HoloformerFeedForward(nn.Module):
-    def __init__(self, dims, ff_dims, dropout=0.1, activation=nn.ReLU):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(dims, ff_dims),
-            activation(),
-            nn.Dropout(dropout),
-            nn.Linear(ff_dims, dims),
-            nn.Dropout(dropout),
-        )
-
-    def forward(self, x):
-        return self.net(x)
 
 
 class HoloformerEncoderLayer(nn.Module):
@@ -74,19 +53,9 @@ class HoloformerEncoderLayer(nn.Module):
             HolographicMixer(dims, ff_dims),
             nn.Dropout(dropout),
         )
-        self.feed_forward = nn.Sequential(
-            HoloformerFeedForward(
-                dims, ff_dims, dropout=dropout, activation=activation
-            ),
-        )
-        self.norm0 = nn.LayerNorm(dims)
-        self.norm1 = nn.LayerNorm(dims)
 
     def forward(self, x, **kwargs):
         return self.mixer(x)
-        # x = self.norm0(x + self.mixer(x))
-        # x = self.norm1(x + self.feed_forward(x))
-        # return x
 
 
 class HoloformerMLM(pl.LightningModule):
