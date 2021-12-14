@@ -54,3 +54,8 @@ class HolographicPositionalEncoding(nn.Module):
         embeddings = self.embeddings[:, :seq_len]
         y = hrr.unbind(x, embeddings)
         return y
+
+    def unbind_reduced(self, s):
+        s = s.unsqueeze(1)
+        y = hrr.unbind(s, self.embeddings)
+        return y
