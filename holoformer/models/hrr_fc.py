@@ -63,6 +63,8 @@ class HoloFCMLM(pl.LightningModule):
         self.embedding.requires_grad_(update_embedding)
 
         self.positional_encoding = HolographicPositionalEncoding(data_dims)
+        self.positional_encoding.requires_grad_(update_embedding)
+
         self.encoder = HoloEncoderFC(
             data_dims, ff_dims, layers, dropout=dropout, activation=activation
         )
@@ -161,35 +163,9 @@ class HoloFCMLM(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
-            self.parameters(), lr=self.lr,  # weight_decay=self.weight_decay
+            self.parameters(), lr=self.lr,
         )
         return optimizer
-        def lr_update(epoch):
-            if epoch < self.hparams.lr_warmup_steps:
-                # warm up lr
-                lr_scale = 0.1 ** (self.hparams.lr_warmup_steps - epoch)
-            else:
-                lr_scale = 0.95 ** epoch
-
-            return lr_scale
-
-        scheduler = LambdaLR(
-            optimizer,
-            lr_lambda=lr_update
-        )
-
-        return (
-            [optimizer],
-            [
-                {
-                    'scheduler': scheduler,
-                    'interval': 'epoch',
-                    'frequency': 1,
-                    'reduce_on_plateau': False,
-                    'monitor': 'loss',
-                }
-            ]
-        )
 
     @classmethod
     def add_argparse_args(self, p):
