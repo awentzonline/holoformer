@@ -135,7 +135,11 @@ class HoloFCMLM(pl.LightningModule):
 
     def extract_sequence(self, s):
         tokens_hrr = self.positional_encoding.unbind_reduced(s)
-        p_tokens = torch.matmul(tokens_hrr, self.embedding.weight.T.unsqueeze(0))
+        token_embeddings = self.embedding.weight
+        tokens_hrr = tokens_hrr / (torch.linalg.norm(tokens_hrr, dim=-1, keepdim=True) + 1e-8)
+        token_embeddings = token_embeddings / (torch.linalg.norm(token_embeddings, dim=-1, keepdim=True) + 1e-8)
+
+        p_tokens = torch.matmul(tokens_hrr, token_embeddings.T.unsqueeze(0))
         p_tokens = p_tokens.argmax(-1)
         return p_tokens
 
@@ -229,7 +233,7 @@ if __name__ == '__main__':
 
     print('Set up Trainer')
     model_checkpoint = ModelCheckpoint()
-    callbacks = [model_checkpoint, EchoMLMFullyReducedTextBatch(p_print=1)]
+    callbacks = [model_checkpoint, EchoMLMFullyReducedTextBatch()]
     trainer = pl.Trainer.from_argparse_args(
         args, callbacks=callbacks
     )
