@@ -3,7 +3,15 @@ HHR ops from https://arxiv.org/pdf/2109.02157.pdf
 """
 import torch
 from torch.distributions import Normal
-from torch.fft import fft, ifft
+#from torch.fft import fft, ifft
+
+
+def fft(x):
+    return torch.fft.fft(x, norm=None)
+
+
+def ifft(x):
+    return torch.fft.ifft(x, norm=None)
 
 
 def bind(a, b):

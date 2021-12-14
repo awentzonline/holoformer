@@ -23,27 +23,28 @@ class HoloReduceExpand(pl.LightningModule):
     a sequence into a single vector and then re-expanding to
     its original form.
     """
-    def __init__(self, tokenizer, data_dims=100,
+    def __init__(self, tokenizer, dims=100,
                  lr=0.001, weight_decay=1e-5, dropout=0.1,
                  pad_token_id=0,
                  update_embedding=True,
+                 max_seq_len=256,
                  **kwargs):
         super().__init__()
         self.save_hyperparameters()
         self.tokenizer = tokenizer
-        self.data_dims = data_dims
+        self.data_dims = dims
         self.pad_token_id = pad_token_id
         self.embedding = nn.Embedding(
-            len(tokenizer), data_dims, padding_idx=pad_token_id,
+            len(tokenizer), dims, padding_idx=pad_token_id,
         )
         self.embedding.weight.data = hrr.init(self.embedding.weight.data.shape)
         self.embedding.requires_grad_(update_embedding)
 
-        self.positional_encoding = HolographicPositionalEncoding(data_dims)
+        self.positional_encoding = HolographicPositionalEncoding(dims, max_len=max_seq_len)
         self.positional_encoding.requires_grad_(update_embedding)
 
         self.lr = lr
-        self.hrr_dist = Normal(0., 1. / data_dims)
+        self.hrr_dist = Normal(0., 1. / dims)
         self.update_embedding = update_embedding
 
     def forward(self, x, **kwargs):
@@ -54,6 +55,7 @@ class HoloReduceExpand(pl.LightningModule):
     def embed_sequence(self, x):
         embedded = self.embedding(x)
         embedded = self.positional_encoding(embedded)
+        # print(torch.norm(embedded, dim=-1))
         return embedded
 
     def training_step(self, batch, batch_idx):
@@ -91,8 +93,10 @@ class HoloReduceExpand(pl.LightningModule):
         embedding_loss = torch.tensor(0, device=self.device)
         positional_loss = torch.tensor(0, device=self.device)
         if self.update_embedding:
-            embedding_loss = hrr.unit_regularization(self.embedding.weight).mean()
-            positional_loss = self.positional_encoding.loss(all_tokens).mean()
+            embedding_loss = torch.abs(1 - torch.linalg.norm(self.embedding.weight, dim=-1)).mean()
+            positional_loss = torch.abs(1 - torch.linalg.norm(self.positional_encoding.embeddings, dim=-1)).mean()
+            embedding_loss += hrr.unit_regularization(self.embedding.weight).mean()
+            positional_loss += self.positional_encoding.loss(all_tokens).mean()
 
         loss = present_loss + absent_loss + embedding_loss + positional_loss
         metrics = dict(
@@ -109,6 +113,9 @@ class HoloReduceExpand(pl.LightningModule):
 
     def extract_sequence(self, s):
         tokens_hrr = self.positional_encoding.unbind_reduced(s)
+        return self.extract_tokens(tokens_hrr)
+
+    def extract_tokens(self, tokens_hrr):
         token_embeddings = self.embedding.weight
         tokens_hrr = tokens_hrr / (torch.linalg.norm(tokens_hrr, dim=-1, keepdim=True) + 1e-8)
         token_embeddings = token_embeddings / (torch.linalg.norm(token_embeddings, dim=-1, keepdim=True) + 1e-8)
@@ -116,22 +123,6 @@ class HoloReduceExpand(pl.LightningModule):
         p_tokens = torch.matmul(tokens_hrr, token_embeddings.T.unsqueeze(0))
         p_tokens = p_tokens.argmax(-1)
         return p_tokens
-
-    def mask_tokens(self, all_tokens):
-        mask = torch.rand(*all_tokens.shape, device=self.device)
-        mask = (mask < self.p_mask) * (all_tokens != self.pad_token_id)
-        masked_tokens = all_tokens.clone()
-        masked_tokens[mask] = self.mask_token_id
-        # leave some tokens unmasked
-        unmask = torch.rand_like(all_tokens, dtype=torch.float32)
-        unmask = (unmask < self.p_unmask) * mask
-        masked_tokens[unmask] = all_tokens[unmask]
-        # assign random tokens
-        random_mask = torch.rand_like(all_tokens, dtype=torch.float32)
-        random_mask = (random_mask < self.p_random_mask) * mask
-        random_indices = torch.randint_like(all_tokens, 1, len(self.tokenizer))
-        masked_tokens[random_mask] = random_indices[random_mask]
-        return masked_tokens, mask
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
@@ -148,7 +139,8 @@ class HoloReduceExpand(pl.LightningModule):
         p.add_argument('--layers', default=4, type=int)
         p.add_argument('--dropout', default=0.1, type=float)
         p.add_argument('--batch_size', default=32, type=int)
-        p.add_argument('--lr_warmup_steps', default=3, type=int)
+        p.add_argument('--max_seq_len', default=20, type=int)
+
         return p
 
 
@@ -181,7 +173,7 @@ if __name__ == '__main__':
 
     print('Set up Trainer')
     model_checkpoint = ModelCheckpoint()
-    callbacks = [model_checkpoint, EchoFullyReducedTextBatch(p_print=1)]
+    callbacks = [model_checkpoint, EchoFullyReducedTextBatch()]
     trainer = pl.Trainer.from_argparse_args(
         args, callbacks=callbacks
     )

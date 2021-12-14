@@ -64,6 +64,18 @@ class EchoFullyReducedTextBatch(Callback):
             return
 
         all_tokens = batch['input_ids'].to(model.device)
+
+        # reconstructing embedding works
+        # recon_tokens = model.embedding(all_tokens)
+        # recon_tokens = model.extract_tokens(recon_tokens)[0]
+
+        # bind/unbind positions reconstruct embedding works
+        # recon_tokens = model.embed_sequence(all_tokens)
+        # recon_tokens = model.positional_encoding.unbind_positions(recon_tokens)
+        # recon_tokens = model.extract_tokens(recon_tokens)[0]
+
+        # fully reduced:
         recon_tokens = model(all_tokens)
         recon_tokens = model.extract_sequence(recon_tokens)[0]
+
         print(model.tokenizer.decode(recon_tokens))
