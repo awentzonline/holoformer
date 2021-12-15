@@ -86,25 +86,39 @@ class HoloReduceExpand(pl.LightningModule):
         recon_tokens_hrr = recon_tokens_hrr / (torch.linalg.norm(recon_tokens_hrr, dim=-1, keepdim=True) + 1e-8)
         target_tokens = target_tokens / (torch.linalg.norm(target_tokens, dim=-1, keepdim=True) + 1e-8)
 
-        present_loss = (1 - torch.matmul(target_tokens, recon_tokens_hrr.unsqueeze(-1))).mean()
-        absent_loss = torch.matmul(target_tokens, absent_emb_pos.unsqueeze(-1)).mean()
+        present_loss = (1 - torch.matmul(target_tokens, recon_tokens_hrr.unsqueeze(-1)))
+        present_loss = present_loss.squeeze(-1).abs().sum(1).mean()
+        absent_loss = torch.matmul(target_tokens, absent_emb_pos.unsqueeze(-1))
+        absent_loss = absent_loss.abs().squeeze(-1).sum(1).mean()
 
         # regularize embeddings
         embedding_loss = torch.tensor(0, device=self.device)
         positional_loss = torch.tensor(0, device=self.device)
+        embedding_uniqueness_loss = torch.tensor(0, device=self.device)
         if self.update_embedding:
-            embedding_loss = torch.abs(1 - torch.linalg.norm(self.embedding.weight, dim=-1)).mean()
-            positional_loss = torch.abs(1 - torch.linalg.norm(self.positional_encoding.embeddings, dim=-1)).mean()
-            embedding_loss += hrr.unit_regularization(self.embedding.weight).mean()
-            positional_loss += self.positional_encoding.loss(all_tokens).mean()
+            # embedding_loss = torch.abs(1 - torch.linalg.norm(self.embedding.weight, dim=-1)).mean()
+            # positional_loss = torch.abs(1 - torch.linalg.norm(self.positional_encoding.embeddings, dim=-1)).mean()
+            embedding_loss = hrr.unit_regularization(self.embedding.weight).mean()
+            positional_loss = self.positional_encoding.loss(all_tokens).mean()
 
-        loss = present_loss + absent_loss + embedding_loss + positional_loss
+            unique_tokens = torch.unique(
+                all_tokens,
+                sorted=False, return_inverse=False, return_counts=False
+            )
+            unique_embeddings = self.embedding(unique_tokens)
+            c = torch.matmul(unique_embeddings, unique_embeddings.T)
+            on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()
+            off_diag = off_diagonal(c).pow_(2).sum()
+            embedding_uniqueness_loss = on_diag + 0.0051 * off_diag
+
+        loss = present_loss + absent_loss + embedding_loss + positional_loss + embedding_uniqueness_loss
         metrics = dict(
             loss=loss,
             present_loss=present_loss,
             absent_loss=absent_loss,
             embedding_loss=embedding_loss,
             positional_loss=positional_loss,
+            embedding_uniqueness_loss=embedding_uniqueness_loss,
         )
         losses = dict(
             loss=loss
@@ -142,6 +156,13 @@ class HoloReduceExpand(pl.LightningModule):
         p.add_argument('--max_seq_len', default=20, type=int)
 
         return p
+
+
+def off_diagonal(x):
+    # return a flattened view of the off-diagonal elements of a square matrix
+    n, m = x.shape
+    assert n == m
+    return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
 
 
 if __name__ == '__main__':
