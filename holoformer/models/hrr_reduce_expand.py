@@ -106,8 +106,8 @@ class HoloReduceExpand(pl.LightningModule):
                 sorted=False, return_inverse=False, return_counts=False
             )
             unique_embeddings = self.embedding(unique_tokens)
-            embedding_bt_loss = barlow_loss(unique_embeddings).mean()
-            position_bt_loss = barlow_loss(self.positional_encoding.embeddings[0]).mean()
+            embedding_bt_loss = unique_nonzero_loss(unique_embeddings).mean()
+            position_bt_loss = unique_nonzero_loss(self.positional_encoding.embeddings[0]).mean()
 
         loss = present_loss + absent_loss + embedding_loss + positional_loss + embedding_bt_loss + position_bt_loss
         metrics = dict(
@@ -156,7 +156,7 @@ class HoloReduceExpand(pl.LightningModule):
         return p
 
 
-def barlow_loss(x, lambda_=1.):
+def unique_nonzero_loss(x, lambda_=1.):
     c = torch.matmul(x, x.T)
     on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()
     off_diag = off_diagonal(c).pow_(2).sum()
