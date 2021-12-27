@@ -35,7 +35,7 @@ class HoloReduceExpand(pl.LightningModule):
         self.data_dims = dims
         self.pad_token_id = pad_token_id
         self.embedding = nn.Embedding(
-            len(tokenizer), dims, padding_idx=pad_token_id,
+            len(tokenizer), dims, #padding_idx=pad_token_id,
         )
         self.embedding.weight.data = hrr.init(self.embedding.weight.data.shape)
         self.embedding.requires_grad_(update_embedding)
@@ -79,9 +79,10 @@ class HoloReduceExpand(pl.LightningModule):
 
         all_embeddings = self.embedding.weight.sum(0, keepdim=True)
         all_positions = self.positional_encoding.embeddings.sum(1)
+
         all_emb_pos = hrr.bind(all_embeddings, all_positions)
 
-        absent_emb_pos = all_emb_pos - target_tokens.sum(1)
+        absent_emb_pos = all_emb_pos - recon_tokens_hrr
         absent_emb_pos = absent_emb_pos / (torch.linalg.norm(absent_emb_pos, dim=-1, keepdim=True) + 1e-8)
         recon_tokens_hrr = recon_tokens_hrr / (torch.linalg.norm(recon_tokens_hrr, dim=-1, keepdim=True) + 1e-8)
         target_tokens = target_tokens / (torch.linalg.norm(target_tokens, dim=-1, keepdim=True) + 1e-8)
@@ -89,7 +90,7 @@ class HoloReduceExpand(pl.LightningModule):
         present_loss = (1 - torch.matmul(target_tokens, recon_tokens_hrr.unsqueeze(-1)))
         present_loss = present_loss.squeeze(-1).abs().sum(1).mean()
         absent_loss = torch.matmul(target_tokens, absent_emb_pos.unsqueeze(-1))
-        absent_loss = absent_loss.abs().squeeze(-1).sum(1).mean()
+        absent_loss = absent_loss.squeeze(-1).abs().sum(1).mean()
 
         # regularize embeddings
         embedding_loss = torch.tensor(0, device=self.device)
@@ -158,7 +159,7 @@ class HoloReduceExpand(pl.LightningModule):
 
 def unique_nonzero_loss(x, lambda_=1.):
     c = torch.matmul(x, x.T)
-    on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()
+    on_diag = -torch.diagonal(c).pow_(2).sum()
     off_diag = off_diagonal(c).pow_(2).sum()
     return on_diag + lambda_ * off_diag
 
