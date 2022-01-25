@@ -1,6 +1,7 @@
 holoformer
 ==========
 Transformer using Holographic Reduced Representation for token mixing.
+Still WIP don't switch your pipeline over yet.
 
 Development
 -----------
