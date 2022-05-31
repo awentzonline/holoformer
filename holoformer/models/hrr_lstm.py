@@ -127,8 +127,8 @@ class HoloformerLSTM(pl.LightningModule):
         if self.update_embedding:
             embedding_loss = hrr.unit_regularization(self.embedding.weight).mean()
 
-        ew = self.embedding.weight
-        print(ew.min(), ew.mean(), ew.max())
+        # ew = self.embedding.weight
+        # print(ew.min(), ew.mean(), ew.max())
 
         loss = hrr_loss + self.emb_loss_w * embedding_loss
         metrics = dict(
