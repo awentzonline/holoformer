@@ -32,12 +32,22 @@ def inverse(a):
 #     a_hat = a_hat / (a_hat.abs() + eps)
 #     return torch.real(ifft(a_hat))
 
+#
+# def unit_projection(x):
+#     print(x)
+#     c = torch.fft.rfft(x, 1)
+#     c_ish = c / torch.norm(c, dim=-1, keepdim=True)
+#     print(c, torch.norm(c, dim=-1, keepdim=True), c_ish)
+#     output = torch.fft.irfft(c_ish, x.shape[-1]) #1)#, s=x.shape[1:])
+#     print(output)
+#     return output
+#
 
 def unit_projection(x):
-    c = torch.fft.rfft(x, 1)
+    c = fft(x)
     c_ish = c / torch.norm(c, dim=-1, keepdim=True)
-    output = torch.fft.irfft(c_ish, x.shape[-1]) #1)#, s=x.shape[1:])
-    return output
+    output = ifft(c_ish) #1)#, s=x.shape[1:])
+    return torch.real(output)
 
 
 def init(shape):
