@@ -21,7 +21,7 @@ class HoloformerLSTM(pl.LightningModule):
     def __init__(self, tokenizer, data_dims=100, hidden_dims=512, layers=1,
                  lr=0.001, weight_decay=1e-5, dropout=0.1,
                  activation=nn.ReLU, pad_token_id=0, mask_token_id=1,
-                 update_embedding=False, lr_warmup_steps=3,
+                 update_embedding=True, lr_warmup_steps=3,
                  **kwargs):
         super().__init__()
         self.save_hyperparameters()
@@ -95,7 +95,7 @@ class HoloformerLSTM(pl.LightningModule):
         recon_embedding = recon_embedding[:, :-1]
         batch_size, seq_len = recon_embedding.shape[:2]
         target_embeddings = self.embedding(all_tokens[:, 1:])
-        target_embeddings /= (torch.norm(target_embeddings, dim=-1, keepdim=True) + 1e-8)
+        target_embeddings = target_embeddings / (torch.norm(target_embeddings, dim=-1, keepdim=True) + 1e-8)
         # all_embeddings = self.embedding.weight.data.sum(0, keepdim=True)
         # all of the embeddings except the target
         # negative_target_embeddings = all_embeddings.unsqueeze(1).repeat(batch_size, seq_len, 1) - target_embeddings
