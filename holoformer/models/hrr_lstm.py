@@ -104,7 +104,7 @@ class HoloformerLSTM(pl.LightningModule):
         absent_emb = absent_emb.repeat(batch_size, seq_len, 1)
         p_absent = hrr.unbind(recon_embedding, absent_emb)
         p_absent = p_absent / (torch.norm(p_absent, dim=-1, keepdim=True) + 1e-8)
-        cos_absent = torch.einsum('abc,ijc->ab', target_embeddings, p_absent)
+        cos_absent = torch.einsum('bij,bik->bi', target_embeddings, p_absent)
         # cos_absent = torch.matmul(
         #     target_embeddings, p_absent.unsqueeze(1).transpose(-1, -2)
         # ).squeeze(-1)
@@ -113,7 +113,7 @@ class HoloformerLSTM(pl.LightningModule):
         present_emb = present_emb.repeat(batch_size, seq_len, 1)
         p_present = hrr.unbind(recon_embedding, present_emb)
         p_present = p_present / (torch.norm(p_present, dim=-1, keepdim=True) + 1e-8)
-        cos_present = torch.einsum('abc,ijc->ab', target_embeddings, p_present)
+        cos_present = torch.einsum('bij,bik->bi', target_embeddings, p_present)
         # cos_present = torch.matmul(
         #     target_embeddings, p_present.unsqueeze(-2)
         # ).squeeze(-1)
