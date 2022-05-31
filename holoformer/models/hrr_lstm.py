@@ -64,7 +64,7 @@ class HoloformerLSTM(pl.LightningModule):
         p_present = hrr.unbind(emb, present_emb)
         p_present = p_present / (torch.norm(p_present, dim=-1, keepdim=True) + 1e-8)
         all_embeddings = self.embedding.weight.data.unsqueeze(0)
-            cos_present = torch.matmul(
+        cos_present = torch.matmul(
             all_embeddings, p_present.unsqueeze(-2).transpose(-1, -2)
         ).squeeze(-1)
         tokens = cos_present.argmax(-1)
