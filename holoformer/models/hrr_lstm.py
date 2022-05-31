@@ -64,6 +64,7 @@ class HoloformerLSTM(pl.LightningModule):
         p_present = hrr.unbind(emb, present_emb)
         p_present = p_present / (torch.norm(p_present, dim=-1, keepdim=True) + 1e-8)
         all_embeddings = self.embedding.weight.data.unsqueeze(0)
+        all_embeddings /= (torch.norm(all_embeddings, dim=-1, keepdim=True) + 1e-8)
         cos_present = torch.matmul(
             all_embeddings, p_present.unsqueeze(-2).transpose(-1, -2)
         ).squeeze(-1)
@@ -94,8 +95,8 @@ class HoloformerLSTM(pl.LightningModule):
         recon_embedding = recon_embedding[:, :-1]
         batch_size, seq_len = recon_embedding.shape[:2]
         target_embeddings = self.embedding(all_tokens[:, 1:])
-
-        all_embeddings = self.embedding.weight.data.sum(0, keepdim=True)
+        target_embeddings /= (torch.norm(target_embeddings, dim=-1, keepdim=True) + 1e-8)
+        # all_embeddings = self.embedding.weight.data.sum(0, keepdim=True)
         # all of the embeddings except the target
         # negative_target_embeddings = all_embeddings.unsqueeze(1).repeat(batch_size, seq_len, 1) - target_embeddings
 
