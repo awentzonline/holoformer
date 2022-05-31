@@ -32,7 +32,7 @@ class HoloformerLSTM(pl.LightningModule):
         self.mask_token_id = mask_token_id
         self.pad_token_id = pad_token_id
         self.emb_loss_w = emb_loss_w
-        
+
         self.register_buffer('presence_embeddings', hrr.init_ortho(
             (2, data_dims)
         ).unsqueeze(1).unsqueeze(1))
@@ -66,7 +66,7 @@ class HoloformerLSTM(pl.LightningModule):
         p_present = hrr.unbind(emb, present_emb)
         p_present = p_present / (torch.norm(p_present, dim=-1, keepdim=True) + 1e-8)
         all_embeddings = self.embedding.weight.data.unsqueeze(0)
-        all_embeddings /= (torch.norm(all_embeddings, dim=-1, keepdim=True) + 1e-8)
+        all_embeddings = all_embeddings / (torch.norm(all_embeddings, dim=-1, keepdim=True) + 1e-8)
         cos_present = torch.matmul(
             all_embeddings, p_present.unsqueeze(-2).transpose(-1, -2)
         ).squeeze(-1)
