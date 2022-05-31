@@ -38,6 +38,21 @@ def init(shape):
     return unit_projection(a)
 
 
+def init_ortho(shape):
+    """
+    Generate n vectors of size dims that are orthogonal to each other.
+    """
+    num_vectors, dims = shape
+    # Intializing class vectors.
+    vecs = torch.randn(dims, num_vectors, dtype=torch.float)
+
+    # Using QR decomposition to get orthogonal vectors.
+    vecs, _ = torch.qr(vecs)
+    vecs = vecs.t()
+    vecs = vecs / torch.norm(vecs, dim=-1, keepdim=True)
+    return vecs
+
+
 def unit_regularization(v):
     v_hat = fft(v)
     v_hat = v_hat * v_hat.abs()

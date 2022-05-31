@@ -31,9 +31,9 @@ class HoloformerLSTM(pl.LightningModule):
         self.mask_token_id = mask_token_id
         self.pad_token_id = pad_token_id
 
-        self.register_buffer('presence_embeddings', hrr.init(
-            (2, 1, 1, data_dims)
-        ))
+        self.register_buffer('presence_embeddings', hrr.init_ortho(
+            (2, data_dims)
+        ).unsqueeze(1).unsqueeze(1))
         self.embedding = nn.Embedding(
             len(tokenizer), data_dims, padding_idx=pad_token_id,
         )
