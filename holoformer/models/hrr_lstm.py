@@ -22,6 +22,7 @@ class HoloformerLSTM(pl.LightningModule):
                  lr=0.001, weight_decay=1e-5, dropout=0.1,
                  activation=nn.ReLU, pad_token_id=0, mask_token_id=1,
                  update_embedding=True, lr_warmup_steps=3,
+                 emb_loss_w=0.1,
                  **kwargs):
         super().__init__()
         self.save_hyperparameters()
@@ -30,7 +31,8 @@ class HoloformerLSTM(pl.LightningModule):
         self.hidden_dims = hidden_dims
         self.mask_token_id = mask_token_id
         self.pad_token_id = pad_token_id
-
+        self.emb_loss_w = emb_loss_w
+        
         self.register_buffer('presence_embeddings', hrr.init_ortho(
             (2, data_dims)
         ).unsqueeze(1).unsqueeze(1))
@@ -125,7 +127,10 @@ class HoloformerLSTM(pl.LightningModule):
         if self.update_embedding:
             embedding_loss = hrr.unit_regularization(self.embedding.weight).mean()
 
-        loss = hrr_loss + embedding_loss
+        ew = self.embedding.weight
+        print(ew.min(), ew.mean(), ew.max())
+
+        loss = hrr_loss + self.emb_loss_w * embedding_loss
         metrics = dict(
             loss=loss,
             recon_loss=hrr_loss,
@@ -178,6 +183,7 @@ class HoloformerLSTM(pl.LightningModule):
         p.add_argument('--dropout', default=0.1, type=float)
         p.add_argument('--batch_size', default=32, type=int)
         p.add_argument('--lr_warmup_steps', default=3, type=int)
+        p.add_argument('--emb_loss_w', default=0.1, type=float)
         return p
 
 

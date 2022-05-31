@@ -8,6 +8,7 @@ class AutoRegressiveTextBatch(Callback):
         super().__init__(*args, **kwargs)
         self.p_print = p_print
 
+    @torch.no_grad()
     def on_train_batch_end(self, trainer, model, outputs, batch, *args, **kwargs):
         if np.random.uniform() > self.p_print:
             return
