@@ -92,6 +92,10 @@ class HoloformerMLM(pl.LightningModule):
         self.output_token = nn.Linear(
             data_dims, num_tokens,
         )
+        self.register_buffer('presence_embeddings', hrr.init_ortho(
+            (2, data_dims)
+        ).unsqueeze(1).unsqueeze(1))
+
         transformer_layer = HoloformerEncoderLayer(
             data_dims, ff_dims, dropout=dropout, activation=activation
         )
@@ -105,6 +109,8 @@ class HoloformerMLM(pl.LightningModule):
     def forward(self, x, **kwargs):
         embedded = self.embedding(x)
         embedded = self.positional_encoding(embedded)
+        present_emb = self.presence_embeddings[1]
+        embedded = hrr.unbind(embedded, present_emb)
         y = self.encoder(embedded)
         return self.output_token(y)
 
