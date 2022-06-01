@@ -21,7 +21,7 @@ class HoloformerLSTM(pl.LightningModule):
     def __init__(self, tokenizer, data_dims=100, hidden_dims=512, layers=1,
                  lr=0.001, weight_decay=1e-5, dropout=0.1,
                  activation=nn.ReLU, pad_token_id=0, mask_token_id=1,
-                 update_embedding=True, lr_warmup_steps=3,
+                 update_embedding=False, lr_warmup_steps=3,
                  emb_loss_w=0.1,
                  **kwargs):
         super().__init__()
@@ -175,7 +175,7 @@ class HoloformerLSTM(pl.LightningModule):
 
     @classmethod
     def add_argparse_args(self, p):
-        p.add_argument('--dims', default=100, type=int)
+        p.add_argument('--data_dims', default=100, type=int)
         p.add_argument('--hidden_dims', default=200, type=int)
         p.add_argument('--lr', default=0.001, type=float)
         p.add_argument('--weight_decay', default=1e-4, type=float)
