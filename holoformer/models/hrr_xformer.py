@@ -32,16 +32,22 @@ class HolographicMixer(nn.Module):
             nn.Linear(dims, dims),
             nn.Tanh(),
         )
+        self.value = nn.Sequential(
+            nn.Linear(dims, dims),
+            nn.Tanh(),
+        )
 
     def forward(self, x):
         """
         x.shape ~= (batch, sequence, embedding)
         """
-        query = self.query(x) / x.shape[-1]
-        keys = self.key(x) / x.shape[-1]
-        x_k = hrr.bind(keys, x)
+        query = hrr.unit_projection(self.query(x))
+        keys = hrr.unit_projection(self.key(x))
+        values = hrr.unit_projection(self.value(x))
+        x_k = hrr.bind(keys, values)
         s = x_k.sum(dim=1, keepdim=True)
         values = hrr.unbind(s, query)
+        return values
         return hrr.bind(x, values)
         return x + values
 
@@ -62,7 +68,7 @@ class HoloformerMLM(pl.LightningModule):
     def __init__(self, tokenizer, data_dims=100, ff_dims=512, layers=4,
                  lr=0.001, weight_decay=1e-5, dropout=0.1,
                  activation=nn.ReLU, pad_token_id=0, mask_token_id=1,
-                 update_embedding=True, p_mask=0.15, p_random_mask=0.2,
+                 update_embedding=False, p_mask=0.15, p_random_mask=0.2,
                  p_unmask=0.2, lr_warmup_steps=3,
                  **kwargs):
         super().__init__()
@@ -82,6 +88,7 @@ class HoloformerMLM(pl.LightningModule):
         self.embedding.requires_grad_(update_embedding)
 
         self.positional_encoding = HolographicPositionalEncoding(data_dims)
+        self.positional_encoding.requires_grad_(update_embedding)
         self.output_token = nn.Linear(
             data_dims, num_tokens,
         )
@@ -199,6 +206,7 @@ class HoloformerMLM(pl.LightningModule):
         p.add_argument('--dropout', default=0.1, type=float)
         p.add_argument('--batch_size', default=32, type=int)
         p.add_argument('--lr_warmup_steps', default=3, type=int)
+        p.add_argument('--update_embedding', action='store_true')
         return p
 
 
@@ -208,6 +216,7 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser()
     p.add_argument('dataset')
     p.add_argument('tokenizer_name')
+    p.add_argument('--max_seq_len', default=256, type=int)
 
     p = HoloformerMLM.add_argparse_args(p)
     p = pl.Trainer.add_argparse_args(p)
@@ -231,7 +240,7 @@ if __name__ == '__main__':
 
     print('Set up Trainer')
     model_checkpoint = ModelCheckpoint()
-    callbacks = [model_checkpoint, EchoMLMTextBatch()]
+    callbacks = [model_checkpoint, EchoMLMTextBatch(p_print=0.1)]
     trainer = pl.Trainer.from_argparse_args(
         args, callbacks=callbacks
     )
