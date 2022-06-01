@@ -45,21 +45,21 @@ class HolographicMixer(nn.Module):
         """
         x.shape ~= (batch, sequence, embedding)
         """
-        query = self.query(x)
-        keys = self.key(x)
-        values = self.value(x)
-        remove_query = self.remove_query(x)
-        # query = hrr.unit_projection(self.query(x))
-        # keys = hrr.unit_projection(self.key(x))
-        # values = hrr.unit_projection(self.value(x))
-        # remove_query = hrr.unit_projection(self.remove_query(x))
+        # query = self.query(x)
+        # keys = self.key(x)
+        # values = self.value(x)
+        # remove_query = self.remove_query(x)
+        query = hrr.unit_projection(self.query(x))
+        keys = hrr.unit_projection(self.key(x))
+        values = hrr.unit_projection(self.value(x))
+        remove_query = hrr.unit_projection(self.remove_query(x))
         x_k = hrr.bind(keys, values)
         s = x_k.sum(dim=1, keepdim=True)
         values = hrr.unbind(s, query)
         x = x + values
-        remove_values = hrr.unbind(s, remove_query)
+        remove_values = hrr.unbind(x, remove_query)
         removes = hrr.bind(remove_query, remove_values)
-        x = x - removes
+        x = x - remove_values
         return x
 
 
@@ -70,9 +70,19 @@ class HoloformerEncoderLayer(nn.Module):
             HolographicMixer(dims, ff_dims),
             nn.Dropout(dropout),
         )
+        self.ln1 = nn.LayerNorm(dims)
+        self.ln2 = nn.LayerNorm(dims)
+        self.mlp = nn.Sequential(
+            nn.Linear(dims, 4 * dims),
+            nn.GELU(),
+            nn.Linear(4 * dims, dims),
+            nn.Dropout(dropout),
+        )
 
     def forward(self, x, **kwargs):
-        return self.mixer(x)
+        x = x + self.mixer(self.ln1(x))
+        x = x + self.mlp(self.ln2(x))
+        return x
 
 
 class HoloformerMLM(pl.LightningModule):
@@ -100,8 +110,10 @@ class HoloformerMLM(pl.LightningModule):
 
         self.positional_encoding = HolographicPositionalEncoding(data_dims)
         self.positional_encoding.requires_grad_(update_embedding)
-        self.output_token = nn.Linear(
-            data_dims, num_tokens,
+        self.output_token = nn.Sequential(
+            nn.Linear(data_dims, data_dims),
+            nn.LeakyReLU(),
+            nn.Linear(data_dims, num_tokens)
         )
         self.register_buffer('presence_embeddings', hrr.init_ortho(
             (2, data_dims)
@@ -120,9 +132,10 @@ class HoloformerMLM(pl.LightningModule):
     def forward(self, x, **kwargs):
         embedded = self.embedding(x)
         embedded = self.positional_encoding(embedded)
-        present_emb = self.presence_embeddings[1]
-        embedded = hrr.unbind(embedded, present_emb)
+        # present_emb = self.presence_embeddings[1]
+        # embedded = hrr.unbind(embedded, present_emb)
         y = self.encoder(embedded)
+        #y = y / (torch.norm(y, dim=-1, keepdim=True) + 1e-8)
         return self.output_token(y)
 
     def training_step(self, batch, batch_idx):
@@ -142,7 +155,7 @@ class HoloformerMLM(pl.LightningModule):
         all_tokens = data['input_ids'].clone()
         masked_tokens, mask = self.mask_tokens(all_tokens)
         recon_tokens = self(masked_tokens)
-        all_tokens[~mask] = -100  # Don't calculate loss for the unmasked
+        #all_tokens[~mask] = -100  # Don't calculate loss for the unmasked
         recon_loss = F.cross_entropy(
             recon_tokens.permute(0, 2, 1), all_tokens
         )
