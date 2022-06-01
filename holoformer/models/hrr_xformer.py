@@ -41,15 +41,22 @@ class HolographicMixer(nn.Module):
         """
         x.shape ~= (batch, sequence, embedding)
         """
-        query = hrr.unit_projection(self.query(x))
-        keys = hrr.unit_projection(self.key(x))
-        values = hrr.unit_projection(self.value(x))
+        query = self.query(x)
+        keys = self.key(x)
+        values = self.value(x)
+        remove_query = self.remove_query(x)
+        # query = hrr.unit_projection(self.query(x))
+        # keys = hrr.unit_projection(self.key(x))
+        # values = hrr.unit_projection(self.value(x))
+        # remove_query = hrr.unit_projection(self.remove_query(x))
         x_k = hrr.bind(keys, values)
         s = x_k.sum(dim=1, keepdim=True)
         values = hrr.unbind(s, query)
-        return values
-        return hrr.bind(x, values)
-        return x + values
+        x = x + values
+        remove_values = hrr.unbind(s, remove_query)
+        removes = hrr.bind(remove_query, remove_values)
+        x = x - removes
+        return x
 
 
 class HoloformerEncoderLayer(nn.Module):
