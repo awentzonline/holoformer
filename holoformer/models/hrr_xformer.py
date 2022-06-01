@@ -36,6 +36,10 @@ class HolographicMixer(nn.Module):
             nn.Linear(dims, dims),
             nn.Tanh(),
         )
+        self.remove_query = nn.Sequential(
+            nn.Linear(dims, dims),
+            nn.Tanh(),
+        )
 
     def forward(self, x):
         """
