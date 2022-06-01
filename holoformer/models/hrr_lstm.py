@@ -184,6 +184,7 @@ class HoloformerLSTM(pl.LightningModule):
         p.add_argument('--batch_size', default=32, type=int)
         p.add_argument('--lr_warmup_steps', default=3, type=int)
         p.add_argument('--emb_loss_w', default=0.1, type=float)
+        p.add_argument('--update_embedding', action='store_true')
         return p
 
 
