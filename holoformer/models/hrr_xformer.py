@@ -45,14 +45,14 @@ class HolographicMixer(nn.Module):
         """
         x.shape ~= (batch, sequence, embedding)
         """
-        # query = self.query(x)
-        # keys = self.key(x)
-        # values = self.value(x)
-        # remove_query = self.remove_query(x)
-        query = hrr.unit_projection(self.query(x))
-        keys = hrr.unit_projection(self.key(x))
-        values = hrr.unit_projection(self.value(x))
-        remove_query = hrr.unit_projection(self.remove_query(x))
+        query = self.query(x)
+        keys = self.key(x)
+        values = self.value(x)
+        remove_query = self.remove_query(x)
+        # query = hrr.unit_projection(self.query(x))
+        # keys = hrr.unit_projection(self.key(x))
+        # values = hrr.unit_projection(self.value(x))
+        # remove_query = hrr.unit_projection(self.remove_query(x))
         x_k = hrr.bind(keys, values)
         s = x_k.sum(dim=1, keepdim=True)
         values = hrr.unbind(s, query)
@@ -155,7 +155,7 @@ class HoloformerMLM(pl.LightningModule):
         all_tokens = data['input_ids'].clone()
         masked_tokens, mask = self.mask_tokens(all_tokens)
         recon_tokens = self(masked_tokens)
-        #all_tokens[~mask] = -100  # Don't calculate loss for the unmasked
+        all_tokens[~mask] = -100  # Don't calculate loss for the unmasked
         recon_loss = F.cross_entropy(
             recon_tokens.permute(0, 2, 1), all_tokens
         )
