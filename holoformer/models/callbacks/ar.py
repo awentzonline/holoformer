@@ -14,6 +14,8 @@ class AutoRegressiveTextBatch(Callback):
             return
 
         all_tokens = batch['input_ids'].to(model.device)
-        recon_tokens, _ = model(all_tokens)
+        recon_tokens = model(all_tokens)
+        if isinstance(recon_tokens, tuple):
+            recon_tokens = recon_tokens[0]
         recon_tokens = model.embeddings_to_ids(recon_tokens)[0]
         print(model.tokenizer.decode(recon_tokens))
