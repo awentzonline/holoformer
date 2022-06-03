@@ -24,40 +24,56 @@ def _get_clones(module, N):
 class CausalHolographicQKV(nn.Module):
     def __init__(self, dims, ff_dims):
         super().__init__()
+        in_dims = 2 * dims
         self.entity_a = nn.Sequential(
-            nn.Linear(dims, dims),
+            nn.Linear(in_dims, dims * 4),
+            nn.LeakyReLU(),
+            nn.Linear(dims * 4, dims)
         #    nn.Tanh(),
         )
         self.entity_b = nn.Sequential(
-            nn.Linear(dims, dims),
-        #    nn.Tanh(),
+            # nn.Linear(in_dims, dims),
+            # nn.Tanh(),
+            nn.Linear(in_dims, dims * 4),
+            nn.LeakyReLU(),
+            nn.Linear(dims * 4, dims)
         )
         self.relation_w = nn.Sequential(
-            nn.Linear(dims, dims),
-        #    nn.Tanh(),
+            # nn.Linear(in_dims, dims),
+            # nn.Tanh(),
+            nn.Linear(in_dims, dims * 4),
+            nn.LeakyReLU(),
+            nn.Linear(dims * 4, dims)
         )
         self.relation_m = nn.Sequential(
-            nn.Linear(dims, dims),
-        #    nn.Tanh(),
+            # nn.Linear(in_dims, dims),
+            # nn.Tanh(),
+            nn.Linear(in_dims, dims * 4),
+            nn.LeakyReLU(),
+            nn.Linear(dims * 4, dims)
         )
         self.relation_b = nn.Sequential(
-            nn.Linear(dims, dims),
-        #    nn.Tanh(),
+            # nn.Linear(in_dims, dims),
+            # nn.Tanh(),
+            nn.Linear(in_dims, dims * 4),
+            nn.LeakyReLU(),
+            nn.Linear(dims * 4, dims)
         )
 
     def forward(self, x):
         """
         x.shape ~= (batch, sequence, embedding)
         """
-        e_a = self.entity_a(x)
-        e_b = self.entity_b(x)
-        r_w = self.relation_w(x)
-        r_m = self.relation_m(x)
-        r_b = self.relation_b(x)
+        s = x.cumsum(dim=1) - x
+        sx = torch.cat([s, x], dim=-1)
+        e_a = self.entity_a(sx)
+        e_b = self.entity_b(sx)
+        r_w = self.relation_w(sx)
+        r_m = self.relation_m(sx)
+        r_b = self.relation_b(sx)
         e_a, e_b, r_w, r_m, r_b = map(
             hrr.unit_projection, (e_a, e_b, r_w, r_m, r_b)
         )
-        s = x.cumsum(dim=1)
         w_hat = hrr.unbind(hrr.unbind(s, r_w), e_a)
         m_hat = hrr.unbind(hrr.unbind(s, r_m), e_a)
         b_hat = hrr.unbind(hrr.unbind(s, r_b), e_b)
@@ -88,6 +104,8 @@ class HoloformerEncoderLayer(nn.Module):
         )
 
     def forward(self, x, **kwargs):
+        x = x + self.mixer(x)
+        return x
         x = x + self.mixer(self.ln1(x))
         x = x + self.mlp(self.ln2(x))
         return x
@@ -98,7 +116,7 @@ class HoloformerAR(pl.LightningModule):
     def __init__(self, tokenizer, data_dims=100, ff_dims=512, layers=4,
                  lr=0.001, weight_decay=1e-5, dropout=0.1,
                  activation=nn.ReLU, pad_token_id=0,
-                 update_embedding=False, lr_warmup_steps=3,
+                 update_embedding=False, lr_warmup_steps=3, pe_type='holo',
                  **kwargs):
         super().__init__()
         self.save_hyperparameters()
@@ -112,8 +130,11 @@ class HoloformerAR(pl.LightningModule):
         self.embedding.weight.data = hrr.init(self.embedding.weight.data.shape)
         self.embedding.requires_grad_(update_embedding)
 
-        self.positional_encoding = HolographicPositionalEncoding(data_dims)
-        self.positional_encoding.requires_grad_(update_embedding)
+        if pe_type == 'holo':
+            self.positional_encoding = HolographicPositionalEncoding(data_dims)
+            self.positional_encoding.requires_grad_(update_embedding)
+        else:
+            self.positional_encoding = PositionalEncoding(data_dims)
         self.output_token = nn.Sequential(
             nn.Linear(data_dims, data_dims),
             nn.LeakyReLU(),
@@ -169,9 +190,9 @@ class HoloformerAR(pl.LightningModule):
 
         embedding_loss = torch.tensor(0, device=self.device)
         positional_loss = torch.tensor(0, device=self.device)
-        if self.update_embedding:
-            embedding_loss = hrr.unit_regularization(self.embedding.weight).mean()
-            positional_loss = self.positional_encoding.loss(all_tokens).mean()
+        # if self.update_embedding:
+        #     embedding_loss = hrr.unit_regularization(self.embedding.weight).mean()
+        #     positional_loss = self.positional_encoding.loss(all_tokens).mean()
 
         loss = recon_loss + embedding_loss + positional_loss
         metrics = dict(
