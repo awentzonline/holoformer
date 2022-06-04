@@ -130,12 +130,14 @@ class HoloformerAR(pl.LightningModule):
                  lr=0.001, weight_decay=1e-5, dropout=0.1,
                  activation=nn.ReLU, pad_token_id=0,
                  update_embedding=False, lr_warmup_steps=3,
+                 opt_betas=(0.9, 0.95),
                  **kwargs):
         super().__init__()
         self.save_hyperparameters()
         self.tokenizer = tokenizer
         self.data_dims = data_dims
         self.ff_dims = ff_dims
+        self.opt_betas = opt_betas
         self.pad_token_id = pad_token_id
         self.embedding = nn.Embedding(
             len(tokenizer), data_dims, padding_idx=pad_token_id,
