@@ -45,7 +45,7 @@ class HolographicMixer(nn.Module):
     def init_weights(self, m):
         if isinstance(m, nn.Linear):
             nn.init.xavier_uniform_(
-                m.weight, gain=nn.init.calculate_gain('tanh')
+                m.weight, gain=nn.init.calculate_gain('linear')
             )
             nn.init.zeros_(m.bias)
 
@@ -86,11 +86,12 @@ class HoloformerEncoderLayer(nn.Module):
             nn.Linear(4 * dims, dims),
             nn.Dropout(dropout),
         )
+        self.apply(self.init_weights)
 
     def init_weights(self, m):
-        if isinstance(module, nn.LayerNorm):
-            torch.nn.init.zeros_(module.bias)
-            torch.nn.init.ones_(module.weight)
+        if isinstance(m, nn.LayerNorm):
+            torch.nn.init.zeros_(m.bias)
+            torch.nn.init.ones_(m.weight)
 
     def forward(self, x, **kwargs):
         x = x + self.mixer(self.ln1(x))
@@ -129,6 +130,7 @@ class HoloformerMLM(pl.LightningModule):
             nn.Linear(data_dims, num_tokens)
         )
         self.output_token.apply(self.init_weights)
+
         self.register_buffer('presence_embeddings', hrr.init_ortho(
             (2, data_dims)
         ).unsqueeze(1).unsqueeze(1))

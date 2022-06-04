@@ -68,6 +68,14 @@ class CausalHolographicQKV(nn.Module):
             nn.Linear(dims, dims),
         #    nn.Tanh(),
         )
+        self.apply(self.init_weights)
+
+    def init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            nn.init.xavier_uniform_(
+                m.weight, gain=nn.init.calculate_gain('tanh')
+            )
+            nn.init.zeros_(m.bias)
 
     def forward(self, x):
         """
@@ -103,6 +111,12 @@ class HoloformerEncoderLayer(nn.Module):
             nn.Linear(4 * dims, dims),
             nn.Dropout(dropout),
         )
+        self.apply(self.init_weights)
+
+    def init_weights(self, m):
+        if isinstance(m, nn.LayerNorm):
+            torch.nn.init.zeros_(m.bias)
+            torch.nn.init.ones_(m.weight)
 
     def forward(self, x, **kwargs):
         x = x + self.mixer(self.ln1(x))
@@ -136,6 +150,8 @@ class HoloformerAR(pl.LightningModule):
             nn.LeakyReLU(),
             nn.Linear(data_dims, num_tokens)
         )
+        self.output_token.apply(self.init_weights)
+        
         self.register_buffer('presence_embeddings', hrr.init_ortho(
             (2, data_dims)
         ).unsqueeze(1).unsqueeze(1))
@@ -149,6 +165,13 @@ class HoloformerAR(pl.LightningModule):
         self.hrr_dist = Normal(0., 1. / data_dims)
         self.update_embedding = update_embedding
         self.ce_loss = nn.CrossEntropyLoss()
+
+    def init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            nn.init.xavier_uniform_(
+                m.weight, gain=nn.init.calculate_gain('leaky_relu')
+            )
+            nn.init.zeros_(m.bias)
 
     def forward(self, x, **kwargs):
         embedded = self.embedding(x)
