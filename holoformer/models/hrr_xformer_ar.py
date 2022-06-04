@@ -137,7 +137,7 @@ class HoloformerAR(pl.LightningModule):
                  lr=0.001, weight_decay=1e-5, dropout=0.1,
                  activation=nn.ReLU, pad_token_id=0,
                  update_embedding=False, lr_warmup_steps=3,
-                 opt_betas=(0.9, 0.95), heads=8,
+                 opt_betas=(0.9, 0.95), heads=8, max_seq_len=256,
                  **kwargs):
         super().__init__()
         self.save_hyperparameters()
@@ -146,6 +146,7 @@ class HoloformerAR(pl.LightningModule):
         self.ff_dims = ff_dims
         self.opt_betas = opt_betas
         self.pad_token_id = pad_token_id
+        self.max_seq_len = max_seq_len
         self.embedding = nn.Embedding(
             len(tokenizer), data_dims, padding_idx=pad_token_id,
         )
@@ -196,6 +197,19 @@ class HoloformerAR(pl.LightningModule):
     def embeddings_to_ids(self, x):
         return x.argmax(-1)
 
+    def generate(self, prompt, max_length=None, temperature=1.):
+        length = prompt.shape[1]
+        if max_length is None:
+            max_length = self.max_seq_len
+        tokens = prompt
+        while length < max_length:
+            p_tokens = self(tokens)
+            next_tokens = self.embeddings_to_ids(p_tokens)
+            tokens = torch.cat([tokens, next_tokens[:, -1:]], dim=1)
+            print(tokens.shape)
+            length += 1
+        return tokens
+
     def training_step(self, batch, batch_idx):
         metrics, losses = self._shared_step(batch, batch_idx)
         self.log_dict(metrics)
@@ -211,8 +225,7 @@ class HoloformerAR(pl.LightningModule):
 
     def _shared_step(self, data, batch_idx):
         all_tokens = data['input_ids'].clone()
-        p_tokens = self(all_tokens)
-        p_tokens = p_tokens[:, :-1]
+        p_tokens = self(all_tokens[:, :-1])
         target_tokens = all_tokens[:, 1:]
         recon_loss = F.cross_entropy(
             p_tokens.permute(0, 2, 1), target_tokens
