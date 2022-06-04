@@ -1,4 +1,5 @@
 import copy
+from functools import partial
 
 import numpy as np
 import pytorch_lightning as pl
@@ -22,35 +23,80 @@ def _get_clones(module, N):
 
 
 class CausalHolographicQKV(nn.Module):
-    def __init__(self, dims, ff_dims):
+    def __init__(self, dims, ff_dims, present_label=None):
         super().__init__()
-        self.query = nn.Sequential(
-            nn.Linear(dims, dims),
+        in_dims = dims * 2
+        hidden_dims = dims * 2
+        self.entity_a = nn.Sequential(
+            nn.Linear(in_dims, hidden_dims),
+            nn.LeakyReLU(),
+            nn.Linear(hidden_dims, dims)
         #    nn.Tanh(),
         )
-        self.key = nn.Sequential(
-            nn.Linear(dims, dims),
-        #    nn.Tanh(),
+        self.entity_b = nn.Sequential(
+            # nn.Linear(in_dims, dims),
+            # nn.Tanh(),
+            nn.Linear(in_dims, hidden_dims),
+            nn.LeakyReLU(),
+            nn.Linear(hidden_dims, dims)
         )
-        self.value = nn.Sequential(
-            nn.Linear(dims, dims),
-        #    nn.Tanh(),
+        self.relation_w = nn.Sequential(
+            # nn.Linear(in_dims, dims),
+            # nn.Tanh(),
+            nn.Linear(in_dims, hidden_dims),
+            nn.LeakyReLU(),
+            nn.Linear(hidden_dims, dims)
         )
+        self.relation_m = nn.Sequential(
+            # nn.Linear(in_dims, dims),
+            # nn.Tanh(),
+            nn.Linear(in_dims, hidden_dims),
+            nn.LeakyReLU(),
+            nn.Linear(hidden_dims, dims)
+        )
+        self.relation_b = nn.Sequential(
+            # nn.Linear(in_dims, dims),
+            # nn.Tanh(),
+            nn.Linear(in_dims, hidden_dims),
+            nn.LeakyReLU(),
+            nn.Linear(hidden_dims, dims)
+        )
+        self.word = nn.Sequential(
+            # nn.Linear(in_dims, dims),
+            # nn.Tanh(),
+            nn.Linear(dims,hidden_dims),
+            nn.LeakyReLU(),
+            nn.Linear(hidden_dims, dims)
+        )
+        self.register_buffer('present_label', present_label)
 
     def forward(self, x):
         """
         x.shape ~= (batch, sequence, embedding)
         """
-        # query = self.query(x)
-        # keys = self.key(x)
-        # values = self.value(x)
-        query = hrr.unit_projection(self.query(x))
-        keys = hrr.unit_projection(self.key(x))
-        values = hrr.unit_projection(self.value(x))
-        x_k = hrr.bind(keys, values)
-        s = x_k.cumsum(dim=1)
-        values = hrr.unbind(s, query)
-        return values
+        s = x.cumsum(dim=1) - x
+        sx = torch.cat([s, x], dim=-1)
+        e_a = self.entity_a(sx)
+        e_b = self.entity_b(sx)
+        r_w = self.relation_w(sx)
+        r_m = self.relation_m(sx)
+        r_b = self.relation_b(sx)
+        e_a, e_b, r_w, r_m, r_b = map(
+            hrr.unit_projection, (e_a, e_b, r_w, r_m, r_b)
+        )
+        w_hat = hrr.unbind(hrr.unbind(x, r_w), e_a)
+        m_hat = hrr.unbind(hrr.unbind(x, r_m), e_a)
+        b_hat = hrr.unbind(hrr.unbind(x, r_b), e_b)
+
+        w = hrr.bind(hrr.bind(e_a, r_w), e_b) - hrr.bind(hrr.bind(e_a, r_w), w_hat)
+        m = hrr.bind(hrr.bind(e_a, r_m), e_b) - hrr.bind(hrr.bind(e_a, r_m), m_hat)
+        b = hrr.bind(hrr.bind(e_a, r_b), e_b) - hrr.bind(hrr.bind(e_b, r_b), b_hat)
+
+        current_word = hrr.unbind(x, self.present_label)
+        remove_word = hrr.bind(current_word, self.present_label)
+        new_word = hrr.unit_projection(self.word(w+m+b+s+x))
+        add_word = hrr.bind(new_word, self.present_label)
+        return w + m + b + add_word - remove_word
 
 
 class HoloformerEncoderLayer(nn.Module):
@@ -61,21 +107,23 @@ class HoloformerEncoderLayer(nn.Module):
         super().__init__()
         self.mixer = nn.Sequential(
             qkv(dims, ff_dims),
-            nn.Dropout(dropout),
+        #    nn.Dropout(dropout),
         )
-        self.ln1 = nn.LayerNorm(dims)
-        self.ln2 = nn.LayerNorm(dims)
-        self.mlp = nn.Sequential(
-            nn.Linear(dims, 4 * dims),
-            nn.GELU(),
-            nn.Linear(4 * dims, dims),
-            nn.Dropout(dropout),
-        )
+        # self.ln1 = nn.LayerNorm(dims)
+        # self.ln2 = nn.LayerNorm(dims)
+        # self.mlp = nn.Sequential(
+        #     nn.Linear(dims, 4 * dims),
+        #     nn.GELU(),
+        #     nn.Linear(4 * dims, dims),
+        #     nn.Dropout(dropout),
+        # )
 
     def forward(self, x, **kwargs):
-        x = x + self.mixer(self.ln1(x))
-        x = x + self.mlp(self.ln2(x))
+        x = x + self.mixer(x)
         return x
+        # x = x + self.mixer(self.ln1(x))
+        # x = x + self.mlp(self.ln2(x))
+        # return x
 
 
 class HoloformerAR(pl.LightningModule):
@@ -83,7 +131,7 @@ class HoloformerAR(pl.LightningModule):
     def __init__(self, tokenizer, data_dims=100, ff_dims=512, layers=4,
                  lr=0.001, weight_decay=1e-5, dropout=0.1,
                  activation=nn.ReLU, pad_token_id=0,
-                 update_embedding=False, lr_warmup_steps=3,
+                 update_embedding=False, lr_warmup_steps=3, pe_type='holo',
                  **kwargs):
         super().__init__()
         self.save_hyperparameters()
@@ -97,8 +145,11 @@ class HoloformerAR(pl.LightningModule):
         self.embedding.weight.data = hrr.init(self.embedding.weight.data.shape)
         self.embedding.requires_grad_(update_embedding)
 
-        self.positional_encoding = HolographicPositionalEncoding(data_dims)
-        self.positional_encoding.requires_grad_(update_embedding)
+        if pe_type == 'holo':
+            self.positional_encoding = HolographicPositionalEncoding(data_dims)
+            self.positional_encoding.requires_grad_(update_embedding)
+        else:
+            self.positional_encoding = PositionalEncoding(data_dims)
         self.output_token = nn.Sequential(
             nn.Linear(data_dims, data_dims),
             nn.LeakyReLU(),
@@ -108,8 +159,10 @@ class HoloformerAR(pl.LightningModule):
             (2, data_dims)
         ).unsqueeze(1).unsqueeze(1))
 
+        mixer = partial(CausalHolographicQKV, present_label=self.presence_embeddings[1])
         transformer_layer = HoloformerEncoderLayer(
-            data_dims, ff_dims, dropout=dropout, activation=activation
+            data_dims, ff_dims, dropout=dropout, activation=activation,
+            qkv=mixer,
         )
         self.encoder = nn.TransformerEncoder(transformer_layer, layers)
         self.lr = lr
@@ -121,14 +174,11 @@ class HoloformerAR(pl.LightningModule):
     def forward(self, x, **kwargs):
         embedded = self.embedding(x)
         embedded = self.positional_encoding(embedded)
-        # present_emb = self.presence_embeddings[1]
-        # embedded = hrr.unbind(embedded, present_emb)
         y = self.encoder(embedded)
-        #y = y / (torch.norm(y, dim=-1, keepdim=True) + 1e-8)
-        return y #self.output_token(y)
-
-    # def embeddings_to_ids(self, x):
-    #     return x.argmax(-1)
+        present_emb = self.presence_embeddings[1]
+        y = hrr.unbind(y, present_emb)
+        # y = y / (torch.norm(y, dim=-1, keepdim=True) + 1e-8)
+        return y#self.output_token(y)
 
     def embeddings_to_ids(self, emb):
         batch_size, seq_len = emb.shape[:2]
@@ -166,9 +216,9 @@ class HoloformerAR(pl.LightningModule):
 
         embedding_loss = torch.tensor(0, device=self.device)
         positional_loss = torch.tensor(0, device=self.device)
-        if self.update_embedding:
-            embedding_loss = hrr.unit_regularization(self.embedding.weight).mean()
-            positional_loss = self.positional_encoding.loss(all_tokens).mean()
+        # if self.update_embedding:
+        #     embedding_loss = hrr.unit_regularization(self.embedding.weight).mean()
+        #     positional_loss = self.positional_encoding.loss(all_tokens).mean()
 
         loss = recon_loss + embedding_loss + positional_loss
         metrics = dict(
@@ -184,7 +234,7 @@ class HoloformerAR(pl.LightningModule):
 
     def hrr_xml_loss(self, pred, target):
         pred = pred / (torch.norm(pred, dim=-1, keepdim=True) + 1e-8)
-        target_embs = self.embedding(target)
+        target_embs = self.embedding(target).detach()
         target_embs = target_embs / (torch.norm(target_embs, dim=-1, keepdim=True) + 1e-8)
         all_embs = self.embedding.weight.sum()
         neg_embs = all_embs - target_embs
@@ -272,7 +322,7 @@ if __name__ == '__main__':
 
     print('Set up Trainer')
     model_checkpoint = ModelCheckpoint()
-    callbacks = [model_checkpoint, AutoRegressiveTextBatch(p_print=0.01)]
+    callbacks = [model_checkpoint, AutoRegressiveTextBatch(p_print=0.02)]
     trainer = pl.Trainer.from_argparse_args(
         args, callbacks=callbacks
     )

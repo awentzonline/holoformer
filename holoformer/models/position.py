@@ -38,6 +38,7 @@ class HolographicPositionalEncoding(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         batch_size, seq_len = x.shape[:2]
         embeddings = self.embeddings[:, :seq_len]
+        #embeddings = hrr.unit_projection(embeddings)
         y = hrr.bind(embeddings, x)
         return y
 

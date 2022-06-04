@@ -25,16 +25,25 @@ class CausalHolographicQKV(nn.Module):
     def __init__(self, dims, ff_dims):
         super().__init__()
         self.query = nn.Sequential(
-            nn.Linear(dims, dims),
-        #    nn.Tanh(),
+            # nn.Linear(dims, dims),
+            # nn.Tanh(),
+            nn.Linear(dims, 4 * dims),
+            nn.LeakyReLU(),
+            nn.Linear(4 * dims, dims),
         )
         self.key = nn.Sequential(
-            nn.Linear(dims, dims),
-        #    nn.Tanh(),
+            # nn.Linear(dims, dims),
+            # nn.Tanh(),
+            nn.Linear(dims, 4 * dims),
+            nn.LeakyReLU(),
+            nn.Linear(4 * dims, dims),
         )
         self.value = nn.Sequential(
-            nn.Linear(dims, dims),
-        #    nn.Tanh(),
+            # nn.Linear(dims, dims),
+            # nn.Tanh(),
+            nn.Linear(dims, 4 * dims),
+            nn.LeakyReLU(),
+            nn.Linear(4 * dims, dims),
         )
 
     def forward(self, x):
@@ -61,20 +70,21 @@ class HoloformerEncoderLayer(nn.Module):
         super().__init__()
         self.mixer = nn.Sequential(
             qkv(dims, ff_dims),
-            nn.Dropout(dropout),
+        #    nn.Dropout(dropout),
         )
-        self.ln1 = nn.LayerNorm(dims)
-        self.ln2 = nn.LayerNorm(dims)
-        self.mlp = nn.Sequential(
-            nn.Linear(dims, 4 * dims),
-            nn.GELU(),
-            nn.Linear(4 * dims, dims),
-            nn.Dropout(dropout),
-        )
+        # self.ln1 = nn.LayerNorm(dims)
+        # self.ln2 = nn.LayerNorm(dims)
+        # self.mlp = nn.Sequential(
+        #     nn.Linear(dims, 4 * dims),
+        #     nn.GELU(),
+        #     nn.Linear(4 * dims, dims),
+        #     nn.Dropout(dropout),
+        # )
 
     def forward(self, x, **kwargs):
-        x = x + self.mixer(self.ln1(x))
-        x = x + self.mlp(self.ln2(x))
+        x = x + self.mixer(x)
+        # x = x + self.mixer(self.ln1(x))
+        # x = x + self.mlp(self.ln2(x))
         return x
 
 
@@ -83,7 +93,7 @@ class HoloformerAR(pl.LightningModule):
     def __init__(self, tokenizer, data_dims=100, ff_dims=512, layers=4,
                  lr=0.001, weight_decay=1e-5, dropout=0.1,
                  activation=nn.ReLU, pad_token_id=0,
-                 update_embedding=False, lr_warmup_steps=3,
+                 update_embedding=True, lr_warmup_steps=3,
                  **kwargs):
         super().__init__()
         self.save_hyperparameters()
@@ -94,7 +104,7 @@ class HoloformerAR(pl.LightningModule):
         self.embedding = nn.Embedding(
             len(tokenizer), data_dims, padding_idx=pad_token_id,
         )
-        self.embedding.weight.data = hrr.init(self.embedding.weight.data.shape)
+        #self.embedding.weight.data = hrr.init(self.embedding.weight.data.shape)
         self.embedding.requires_grad_(update_embedding)
 
         self.positional_encoding = HolographicPositionalEncoding(data_dims)
@@ -120,10 +130,11 @@ class HoloformerAR(pl.LightningModule):
 
     def forward(self, x, **kwargs):
         embedded = self.embedding(x)
+        #embedded = hrr.unit_projection(embedded)
         embedded = self.positional_encoding(embedded)
-        # present_emb = self.presence_embeddings[1]
-        # embedded = hrr.unbind(embedded, present_emb)
         y = self.encoder(embedded)
+        present_emb = self.presence_embeddings[1]
+        embedded = hrr.unbind(y, present_emb)
         #y = y / (torch.norm(y, dim=-1, keepdim=True) + 1e-8)
         return y #self.output_token(y)
 
@@ -272,7 +283,7 @@ if __name__ == '__main__':
 
     print('Set up Trainer')
     model_checkpoint = ModelCheckpoint()
-    callbacks = [model_checkpoint, AutoRegressiveTextBatch(p_print=0.01)]
+    callbacks = [model_checkpoint, AutoRegressiveTextBatch(p_print=0.1)]
     trainer = pl.Trainer.from_argparse_args(
         args, callbacks=callbacks
     )

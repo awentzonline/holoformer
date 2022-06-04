@@ -108,9 +108,7 @@ class HoloformerAR(pl.LightningModule):
             (2, data_dims)
         ).unsqueeze(1).unsqueeze(1))
 
-        transformer_layer = HoloformerEncoderLayer(
-            data_dims, ff_dims, dropout=dropout, activation=activation
-        )
+        transformer_layer = nn.TransformerEncoderLayer(data_dims, 8, ff_dims, dropout)
         self.encoder = nn.TransformerEncoder(transformer_layer, layers)
         self.lr = lr
         self.weight_decay = weight_decay
@@ -125,21 +123,10 @@ class HoloformerAR(pl.LightningModule):
         # embedded = hrr.unbind(embedded, present_emb)
         y = self.encoder(embedded)
         #y = y / (torch.norm(y, dim=-1, keepdim=True) + 1e-8)
-        return y #self.output_token(y)
+        return self.output_token(y)
 
-    # def embeddings_to_ids(self, x):
-    #     return x.argmax(-1)
-
-    def embeddings_to_ids(self, emb):
-        batch_size, seq_len = emb.shape[:2]
-        emb = emb / (torch.norm(emb, dim=-1, keepdim=True) + 1e-8)
-        all_embeddings = self.embedding.weight.data.unsqueeze(0)
-        all_embeddings = all_embeddings / (torch.norm(all_embeddings, dim=-1, keepdim=True) + 1e-8)
-        cos_present = torch.matmul(
-            all_embeddings, emb.unsqueeze(-2).transpose(-1, -2)
-        ).squeeze(-1)
-        tokens = cos_present.argmax(-1)
-        return tokens
+    def embeddings_to_ids(self, x):
+        return x.argmax(-1)
 
     def training_step(self, batch, batch_idx):
         metrics, losses = self._shared_step(batch, batch_idx)
@@ -159,10 +146,9 @@ class HoloformerAR(pl.LightningModule):
         p_tokens = self(all_tokens)
         p_tokens = p_tokens[:, :-1]
         target_tokens = all_tokens[:, 1:]
-        recon_loss = self.hrr_xml_loss(p_tokens, target_tokens)
-        # recon_loss = F.cross_entropy(
-        #     p_tokens.permute(0, 2, 1), target_tokens
-        # )
+        recon_loss = F.cross_entropy(
+            p_tokens.permute(0, 2, 1), target_tokens
+        )
 
         embedding_loss = torch.tensor(0, device=self.device)
         positional_loss = torch.tensor(0, device=self.device)
@@ -181,20 +167,6 @@ class HoloformerAR(pl.LightningModule):
             loss=loss
         )
         return metrics, losses
-
-    def hrr_xml_loss(self, pred, target):
-        pred = pred / (torch.norm(pred, dim=-1, keepdim=True) + 1e-8)
-        target_embs = self.embedding(target)
-        target_embs = target_embs / (torch.norm(target_embs, dim=-1, keepdim=True) + 1e-8)
-        all_embs = self.embedding.weight.sum()
-        neg_embs = all_embs - target_embs
-        neg_embs = neg_embs / (torch.norm(neg_embs, dim=-1, keepdim=True) + 1e-8)
-        cos_absent = torch.einsum('bij,bij->bi', pred, neg_embs)
-        J_n = torch.mean(torch.abs(cos_absent))
-
-        cos_present = torch.einsum('bij,bij->bi', pred, target_embs)
-        J_p = torch.mean(1 - torch.abs(cos_present))
-        return J_p + J_n
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
@@ -272,7 +244,7 @@ if __name__ == '__main__':
 
     print('Set up Trainer')
     model_checkpoint = ModelCheckpoint()
-    callbacks = [model_checkpoint, AutoRegressiveTextBatch(p_print=0.01)]
+    callbacks = [model_checkpoint, AutoRegressiveTextBatch(p_print=0.1)]
     trainer = pl.Trainer.from_argparse_args(
         args, callbacks=callbacks
     )

@@ -21,6 +21,38 @@ def _get_clones(module, N):
     return nn.ModuleList([copy.deepcopy(module) for i in range(N)])
 
 
+class HolographicQKV(nn.Module):
+    def __init__(self, dims, ff_dims):
+        super().__init__()
+        self.query = nn.Sequential(
+            nn.Linear(dims, dims),
+        #    nn.Tanh(),
+        )
+        self.key = nn.Sequential(
+            nn.Linear(dims, dims),
+        #    nn.Tanh(),
+        )
+        self.value = nn.Sequential(
+            nn.Linear(dims, dims),
+        #    nn.Tanh(),
+        )
+
+    def forward(self, x):
+        """
+        x.shape ~= (batch, sequence, embedding)
+        """
+        query = self.query(x)
+        keys = self.key(x)
+        values = self.value(x)
+        # query = hrr.unit_projection(self.query(x))
+        # keys = hrr.unit_projection(self.key(x))
+        # values = hrr.unit_projection(self.value(x))
+        x_k = hrr.bind(keys, values)
+        s = x_k.sum(dim=1, keepdim=True)
+        values = hrr.unbind(s, query)
+        return values
+
+
 class CausalHolographicQKV(nn.Module):
     def __init__(self, dims, ff_dims):
         super().__init__()
@@ -204,7 +236,7 @@ class HoloformerAR(pl.LightningModule):
 
     @classmethod
     def add_argparse_args(self, p):
-        p.add_argument('--dims', default=100, type=int)
+        p.add_argument('--data_dims', default=100, type=int)
         p.add_argument('--ff_dims', default=512, type=int)
         p.add_argument('--lr', default=0.001, type=float)
         p.add_argument('--weight_decay', default=1e-4, type=float)

@@ -92,23 +92,23 @@ class HoloformerEncoderLayer(nn.Module):
         super().__init__()
         self.mixer = nn.Sequential(
             qkv(dims, ff_dims),
-            nn.Dropout(dropout),
+        #    nn.Dropout(dropout),
         )
-        self.ln1 = nn.LayerNorm(dims)
-        self.ln2 = nn.LayerNorm(dims)
-        self.mlp = nn.Sequential(
-            nn.Linear(dims, 4 * dims),
-            nn.GELU(),
-            nn.Linear(4 * dims, dims),
-            nn.Dropout(dropout),
-        )
+        # self.ln1 = nn.LayerNorm(dims)
+        # self.ln2 = nn.LayerNorm(dims)
+        # self.mlp = nn.Sequential(
+        #     nn.Linear(dims, 4 * dims),
+        #     nn.GELU(),
+        #     nn.Linear(4 * dims, dims),
+        #     nn.Dropout(dropout),
+        # )
 
     def forward(self, x, **kwargs):
         x = x + self.mixer(x)
         return x
-        x = x + self.mixer(self.ln1(x))
-        x = x + self.mlp(self.ln2(x))
-        return x
+        # x = x + self.mixer(self.ln1(x))
+        # x = x + self.mlp(self.ln2(x))
+        # return x
 
 
 class HoloformerAR(pl.LightningModule):
@@ -157,10 +157,10 @@ class HoloformerAR(pl.LightningModule):
     def forward(self, x, **kwargs):
         embedded = self.embedding(x)
         embedded = self.positional_encoding(embedded)
-        # present_emb = self.presence_embeddings[1]
-        # embedded = hrr.unbind(embedded, present_emb)
         y = self.encoder(embedded)
-        #y = y / (torch.norm(y, dim=-1, keepdim=True) + 1e-8)
+        present_emb = self.presence_embeddings[1]
+        y = hrr.unbind(y, present_emb)
+        y = y / (torch.norm(y, dim=-1, keepdim=True) + 1e-8)
         return self.output_token(y)
 
     def embeddings_to_ids(self, x):
@@ -240,7 +240,7 @@ class HoloformerAR(pl.LightningModule):
 
     @classmethod
     def add_argparse_args(self, p):
-        p.add_argument('--dims', default=100, type=int)
+        p.add_argument('--data_dims', default=100, type=int)
         p.add_argument('--ff_dims', default=512, type=int)
         p.add_argument('--lr', default=0.001, type=float)
         p.add_argument('--weight_decay', default=1e-4, type=float)
