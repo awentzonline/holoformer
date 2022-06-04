@@ -1,4 +1,5 @@
 import copy
+from functools import partial
 
 import numpy as np
 import pytorch_lightning as pl
@@ -54,8 +55,9 @@ class HolographicQKV(nn.Module):
 
 
 class CausalHolographicQKV(nn.Module):
-    def __init__(self, dims, ff_dims):
+    def __init__(self, dims, ff_dims, heads):
         super().__init__()
+        self.heads = heads
         self.query = nn.Sequential(
             nn.Linear(dims, dims),
         #    nn.Tanh(),
@@ -81,26 +83,31 @@ class CausalHolographicQKV(nn.Module):
         """
         x.shape ~= (batch, sequence, embedding)
         """
-        # query = self.query(x)
-        # keys = self.key(x)
-        # values = self.value(x)
-        query = hrr.unit_projection(self.query(x))
-        keys = hrr.unit_projection(self.key(x))
-        values = hrr.unit_projection(self.value(x))
-        x_k = hrr.bind(keys, values)
+        batch, seq, dims = x.shape
+        head_dims = dims // self.heads
+        q = self.query(x)
+        k = self.key(x)
+        v = self.value(x)
+        q, k, v = map(
+            lambda x: x.view(batch, seq, self.heads, head_dims),
+            (q, k, v)
+        )
+        q, k, v = map(hrr.unit_projection, (q, k, v))
+        x_k = hrr.bind(k, v)
         s = x_k.cumsum(dim=1)
-        values = hrr.unbind(s, query)
+        values = hrr.unbind(s, q)
+        values = values.view(batch, seq, dims)
         return values
 
 
 class HoloformerEncoderLayer(nn.Module):
     def __init__(
         self, dims, ff_dims, dropout,
-        qkv=CausalHolographicQKV, **kwargs
+        mixer=CausalHolographicQKV, **kwargs
     ):
         super().__init__()
         self.mixer = nn.Sequential(
-            qkv(dims, ff_dims),
+            mixer(dims, ff_dims),
             nn.Dropout(dropout),
         )
         self.ln1 = nn.LayerNorm(dims)
@@ -130,7 +137,7 @@ class HoloformerAR(pl.LightningModule):
                  lr=0.001, weight_decay=1e-5, dropout=0.1,
                  activation=nn.ReLU, pad_token_id=0,
                  update_embedding=False, lr_warmup_steps=3,
-                 opt_betas=(0.9, 0.95),
+                 opt_betas=(0.9, 0.95), heads=8,
                  **kwargs):
         super().__init__()
         self.save_hyperparameters()
@@ -158,8 +165,10 @@ class HoloformerAR(pl.LightningModule):
             (2, data_dims)
         ).unsqueeze(1).unsqueeze(1))
 
+        mixer = partial(CausalHolographicQKV, heads=heads)
         transformer_layer = HoloformerEncoderLayer(
-            data_dims, ff_dims, dropout=dropout, activation=activation
+            data_dims, ff_dims, dropout=dropout, activation=activation,
+            mixer=mixer
         )
         self.encoder = nn.TransformerEncoder(transformer_layer, layers)
         self.lr = lr
@@ -262,8 +271,9 @@ class HoloformerAR(pl.LightningModule):
 
     @classmethod
     def add_argparse_args(self, p):
-        p.add_argument('--data_dims', default=100, type=int)
+        p.add_argument('--data_dims', default=128, type=int)
         p.add_argument('--ff_dims', default=512, type=int)
+        p.add_argument('--heads', default=8, type=int)
         p.add_argument('--lr', default=0.001, type=float)
         p.add_argument('--weight_decay', default=1e-4, type=float)
         p.add_argument('--layers', default=4, type=int)
