@@ -40,6 +40,14 @@ class HolographicMixer(nn.Module):
             nn.Linear(dims, dims),
             nn.Tanh(),
         )
+        self.apply(self.init_weights)
+
+    def init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            nn.init.xavier_uniform_(
+                m.weight, gain=nn.init.calculate_gain('tanh')
+            )
+            nn.init.zeros_(m.bias)
 
     def forward(self, x):
         """
@@ -79,6 +87,11 @@ class HoloformerEncoderLayer(nn.Module):
             nn.Dropout(dropout),
         )
 
+    def init_weights(self, m):
+        if isinstance(module, nn.LayerNorm):
+            torch.nn.init.zeros_(module.bias)
+            torch.nn.init.ones_(module.weight)
+
     def forward(self, x, **kwargs):
         x = x + self.mixer(self.ln1(x))
         x = x + self.mlp(self.ln2(x))
@@ -115,6 +128,7 @@ class HoloformerMLM(pl.LightningModule):
             nn.LeakyReLU(),
             nn.Linear(data_dims, num_tokens)
         )
+        self.output_token.apply(self.init_weights)
         self.register_buffer('presence_embeddings', hrr.init_ortho(
             (2, data_dims)
         ).unsqueeze(1).unsqueeze(1))
@@ -128,6 +142,13 @@ class HoloformerMLM(pl.LightningModule):
         self.hrr_dist = Normal(0., 1. / data_dims)
         self.update_embedding = update_embedding
         self.ce_loss = nn.CrossEntropyLoss()
+
+    def init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            nn.init.xavier_uniform_(
+                m.weight, gain=nn.init.calculate_gain('leaky_relu')
+            )
+            nn.init.zeros_(m.bias)
 
     def forward(self, x, **kwargs):
         embedded = self.embedding(x)
