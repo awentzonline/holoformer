@@ -151,7 +151,7 @@ class HoloformerAR(pl.LightningModule):
             nn.Linear(data_dims, num_tokens)
         )
         self.output_token.apply(self.init_weights)
-        
+
         self.register_buffer('presence_embeddings', hrr.init_ortho(
             (2, data_dims)
         ).unsqueeze(1).unsqueeze(1))
@@ -227,7 +227,8 @@ class HoloformerAR(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
-            self.parameters(), lr=self.lr,  # weight_decay=self.weight_decay
+            self.parameters(), lr=self.lr, betas=self.opt_betas,
+            # weight_decay=self.weight_decay
         )
         return optimizer
         def lr_update(epoch):
@@ -268,7 +269,14 @@ class HoloformerAR(pl.LightningModule):
         p.add_argument('--batch_size', default=32, type=int)
         p.add_argument('--lr_warmup_steps', default=3, type=int)
         p.add_argument('--update_embedding', action='store_true')
+        p.add_argument('--opt_betas', default=(0.9, 0.95), type=parse_csv_arg(float))
         return p
+
+
+def parse_csv_arg(type_):
+    def f(v):
+        return tuple(map(type_, v.split(',')))
+    return f
 
 
 if __name__ == '__main__':
