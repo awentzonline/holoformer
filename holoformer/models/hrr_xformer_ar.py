@@ -206,7 +206,6 @@ class HoloformerAR(pl.LightningModule):
             p_tokens = self(tokens)
             next_tokens = self.embeddings_to_ids(p_tokens)
             tokens = torch.cat([tokens, next_tokens[:, -1:]], dim=1)
-            print(tokens.shape)
             length += 1
         return tokens
 
