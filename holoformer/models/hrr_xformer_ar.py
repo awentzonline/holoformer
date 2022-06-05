@@ -156,8 +156,6 @@ class HoloformerAR(pl.LightningModule):
         self.positional_encoding = HolographicPositionalEncoding(data_dims)
         self.positional_encoding.requires_grad_(update_embedding)
         self.output_token = nn.Sequential(
-            nn.Linear(data_dims, data_dims),
-            nn.LeakyReLU(),
             nn.Linear(data_dims, num_tokens)
         )
         self.output_token.apply(self.init_weights)
