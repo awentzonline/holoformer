@@ -10,7 +10,7 @@ class AutoRegressiveTeacherTextBatch(Callback):
 
     @torch.no_grad()
     def on_train_batch_end(self, trainer, model, outputs, batch, *args, **kwargs):
-        if np.random.uniform() < self.p_print:
+        if np.random.uniform() > self.p_print:
             return
 
         all_tokens = batch['input_ids'].to(model.device)
@@ -29,7 +29,7 @@ class AutoRegressiveTextBatch(Callback):
 
     @torch.no_grad()
     def on_train_batch_end(self, trainer, model, outputs, batch, *args, **kwargs):
-        if np.random.uniform() < self.p_print:
+        if np.random.uniform() > self.p_print:
             return
 
         all_tokens = batch['input_ids'].to(model.device)[0:1, :self.prompt_len]

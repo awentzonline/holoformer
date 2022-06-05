@@ -134,7 +134,7 @@ class HoloformerEncoderLayer(nn.Module):
 class HoloformerAR(pl.LightningModule):
     """Auto-regressive holoformer"""
     def __init__(self, tokenizer, data_dims=100, ff_dims=512, layers=4,
-                 lr=0.001, weight_decay=1e-5, dropout=0.1,
+                 lr=0.001, weight_decay=0.1, dropout=0.1,
                  activation=nn.ReLU, pad_token_id=0,
                  update_embedding=False, lr_warmup_steps=3,
                  opt_betas=(0.9, 0.95), heads=8, max_seq_len=256,
@@ -333,7 +333,7 @@ if __name__ == '__main__':
 
     print('Set up Trainer')
     model_checkpoint = ModelCheckpoint()
-    callbacks = [model_checkpoint, AutoRegressiveTextBatch(p_print=0.1)]
+    callbacks = [model_checkpoint, AutoRegressiveTextBatch(p_print=0.01)]
     trainer = pl.Trainer.from_argparse_args(
         args, callbacks=callbacks
     )
