@@ -92,7 +92,7 @@ class CausalHolographicQKV(nn.Module):
             lambda x: x.view(batch, seq, self.heads, head_dims),
             (q, k, v)
         )
-        #q, k, v = map(hrr.unit_projection, (q, k, v))
+        q, k, v = map(hrr.unit_projection, (q, k, v))
         x_k = hrr.bind(k, v)
         s = x_k.cumsum(dim=1)
         values = hrr.unbind(s, q)
@@ -199,7 +199,7 @@ class HoloformerAR(pl.LightningModule):
         else:
             return x.argmax(-1)
 
-    def generate(self, prompt, max_length=None, temperature=0.7):
+    def generate(self, prompt, max_length=None, temperature=1.):
         length = prompt.shape[1]
         if max_length is None:
             max_length = self.max_seq_len
