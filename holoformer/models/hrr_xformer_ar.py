@@ -92,7 +92,7 @@ class CausalHolographicQKV(nn.Module):
             lambda x: x.view(batch, seq, self.heads, head_dims),
             (q, k, v)
         )
-        q, k, v = map(hrr.unit_projection, (q, k, v))
+        #q, k, v = map(hrr.unit_projection, (q, k, v))
         x_k = hrr.bind(k, v)
         s = x_k.cumsum(dim=1)
         values = hrr.unbind(s, q)
@@ -136,7 +136,7 @@ class HoloformerAR(pl.LightningModule):
     def __init__(self, tokenizer, data_dims=100, ff_dims=512, layers=4,
                  lr=0.001, weight_decay=0.1, dropout=0.1,
                  activation=nn.ReLU, pad_token_id=0,
-                 update_embedding=False, lr_warmup_steps=3,
+                 update_embedding=True, lr_warmup_steps=3,
                  opt_betas=(0.9, 0.95), heads=8, max_seq_len=256,
                  **kwargs):
         super().__init__()
@@ -230,9 +230,9 @@ class HoloformerAR(pl.LightningModule):
 
         embedding_loss = torch.tensor(0, device=self.device)
         positional_loss = torch.tensor(0, device=self.device)
-        if self.update_embedding:
-            embedding_loss = hrr.unit_regularization(self.embedding.weight).mean()
-            positional_loss = self.positional_encoding.loss(all_tokens).mean()
+        # if self.update_embedding:
+        #     embedding_loss = hrr.unit_regularization(self.embedding.weight).mean()
+        #     positional_loss = self.positional_encoding.loss(all_tokens).mean()
 
         loss = recon_loss + embedding_loss + positional_loss
         metrics = dict(
