@@ -249,37 +249,50 @@ class HoloformerAR(pl.LightningModule):
         return metrics, losses
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(
-            self.parameters(), lr=self.lr, betas=self.opt_betas,
-            # weight_decay=self.weight_decay
-        )
+        """
+        From minGPT:
+        This long function is unfortunately doing something very simple and is being very defensive:
+        We are separating out all parameters of the model into two buckets: those that will experience
+        weight decay for regularization and those that won't (biases, and layernorm/embedding weights).
+        We are then returning the PyTorch optimizer object.
+        """
+        # separate out all parameters to those that will and won't experience regularizing weight decay
+        decay = set()
+        no_decay = set()
+        whitelist_weight_modules = (torch.nn.Linear, )
+        blacklist_weight_modules = (torch.nn.LayerNorm, torch.nn.Embedding)
+        for mn, m in self.named_modules():
+            for pn, p in m.named_parameters():
+                fpn = '%s.%s' % (mn, pn) if mn else pn # full param name
+
+                if pn.endswith('bias'):
+                    # all biases will not be decayed
+                    no_decay.add(fpn)
+                elif pn.endswith('weight') and isinstance(m, whitelist_weight_modules):
+                    # weights of whitelist modules will be weight decayed
+                    decay.add(fpn)
+                elif pn.endswith('weight') and isinstance(m, blacklist_weight_modules):
+                    # weights of blacklist modules will NOT be weight decayed
+                    no_decay.add(fpn)
+
+        # special case the position embedding parameter in the root GPT module as not decayed
+        no_decay.add('positional_encoding.embeddings')
+
+        # validate that we considered every parameter
+        param_dict = {pn: p for pn, p in self.named_parameters()}
+        inter_params = decay & no_decay
+        union_params = decay | no_decay
+        assert len(inter_params) == 0, "parameters %s made it into both decay/no_decay sets!" % (str(inter_params), )
+        assert len(param_dict.keys() - union_params) == 0, "parameters %s were not separated into either decay/no_decay set!" \
+                                                    % (str(param_dict.keys() - union_params), )
+
+        # create the pytorch optimizer object
+        optim_groups = [
+            {"params": [param_dict[pn] for pn in sorted(list(decay))], "weight_decay": self.weight_decay},
+            {"params": [param_dict[pn] for pn in sorted(list(no_decay))], "weight_decay": 0.0},
+        ]
+        optimizer = torch.optim.AdamW(optim_groups, lr=self.lr, betas=self.opt_betas)
         return optimizer
-        def lr_update(epoch):
-            if epoch < self.hparams.lr_warmup_steps:
-                # warm up lr
-                lr_scale = 0.1 ** (self.hparams.lr_warmup_steps - epoch)
-            else:
-                lr_scale = 0.95 ** epoch
-
-            return lr_scale
-
-        scheduler = LambdaLR(
-            optimizer,
-            lr_lambda=lr_update
-        )
-
-        return (
-            [optimizer],
-            [
-                {
-                    'scheduler': scheduler,
-                    'interval': 'epoch',
-                    'frequency': 1,
-                    'reduce_on_plateau': False,
-                    'monitor': 'loss',
-                }
-            ]
-        )
 
     @classmethod
     def add_argparse_args(self, p):
@@ -287,7 +300,7 @@ class HoloformerAR(pl.LightningModule):
         p.add_argument('--ff_dims', default=512, type=int)
         p.add_argument('--heads', default=8, type=int)
         p.add_argument('--lr', default=0.001, type=float)
-        p.add_argument('--weight_decay', default=1e-4, type=float)
+        p.add_argument('--weight_decay', default=0.1, type=float)
         p.add_argument('--layers', default=4, type=int)
         p.add_argument('--dropout', default=0.1, type=float)
         p.add_argument('--batch_size', default=32, type=int)
