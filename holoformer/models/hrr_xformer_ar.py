@@ -6,7 +6,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 import torch
 from torch import nn
-from torch.distributions import Normal
+from torch.distributions import Categorical, Normal
 from torch.optim.lr_scheduler import LambdaLR
 import torch.nn.functional as F
 
@@ -192,17 +192,21 @@ class HoloformerAR(pl.LightningModule):
         #y = y / (torch.norm(y, dim=-1, keepdim=True) + 1e-8)
         return self.output_token(y)
 
-    def embeddings_to_ids(self, x):
-        return x.argmax(-1)
+    def embeddings_to_ids(self, x, temperature=0.):
+        if temperature:
+            dist = Categorical(logits=x / temperature)
+            return dist.sample()
+        else:
+            return x.argmax(-1)
 
-    def generate(self, prompt, max_length=None, temperature=1.):
+    def generate(self, prompt, max_length=None, temperature=0.7):
         length = prompt.shape[1]
         if max_length is None:
             max_length = self.max_seq_len
         tokens = prompt
         while length < max_length:
             p_tokens = self(tokens)
-            next_tokens = self.embeddings_to_ids(p_tokens)
+            next_tokens = self.embeddings_to_ids(p_tokens, temperature=temperature)
             tokens = torch.cat([tokens, next_tokens[:, -1:]], dim=1)
             length += 1
         return tokens
