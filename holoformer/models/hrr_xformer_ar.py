@@ -172,7 +172,7 @@ class HoloformerAR(pl.LightningModule):
         else:
             return x.argmax(-1)
 
-    def generate(self, prompt, max_length=None, temperature=1.):
+    def generate(self, prompt, max_length=None, temperature=0.7):
         length = prompt.shape[1]
         if max_length is None:
             max_length = self.max_seq_len
