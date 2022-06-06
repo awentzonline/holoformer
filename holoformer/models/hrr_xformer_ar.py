@@ -101,16 +101,6 @@ class HoloformerEncoderLayer(nn.Module):
         return x
 
 
-class Dot(nn.Module):
-    def __init__(self, weights):
-        super().__init__()
-        self.weights = weights
-
-    def forward(self, x):
-        y = torch.einsum('be,ne->bn', x, self.weights)
-        return y
-
-
 class HoloformerAR(pl.LightningModule):
     """Auto-regressive holoformer"""
     def __init__(self, tokenizer, data_dims=100, ff_dims=512, layers=4,
@@ -136,7 +126,7 @@ class HoloformerAR(pl.LightningModule):
         self.positional_encoding = HolographicPositionalEncoding(data_dims)
         self.positional_encoding.requires_grad_(update_embedding)
         self.output_token = nn.Sequential(
-            nn.Linear(data_dims, num_tokens)
+            nn.Linear(data_dims, len(tokenizer))
         )
 
         self.register_buffer('presence_embeddings', hrr.init_ortho(
@@ -163,15 +153,19 @@ class HoloformerAR(pl.LightningModule):
             nn.init.zeros_(m.bias)
 
     def forward(self, x, **kwargs):
+        encoded = self.encode_sequence(x)
+        # encoded = encoded / (torch.norm(encoded, dim=-1, keepdim=True) + 1e-8)
+        return self.output_token(encoded)
+
+    def encode_sequence(self, x):
         embedded = self.embedding(x)
         embedded = self.positional_encoding(embedded)
         # present_emb = self.presence_embeddings[1]
         # embedded = hrr.unbind(embedded, present_emb)
-        y = self.encoder(embedded)
-        #y = y / (torch.norm(y, dim=-1, keepdim=True) + 1e-8)
-        return self.output_token(y)
+        encoded = self.encoder(embedded)
+        return encoded
 
-    def embeddings_to_ids(self, x, temperature=0.):
+    def outputs_to_ids(self, x, temperature=0.):
         if temperature:
             dist = Categorical(logits=x / temperature)
             return dist.sample()
@@ -185,7 +179,7 @@ class HoloformerAR(pl.LightningModule):
         tokens = prompt
         while length < max_length:
             p_tokens = self(tokens)
-            next_tokens = self.embeddings_to_ids(p_tokens, temperature=temperature)
+            next_tokens = self.outputs_to_ids(p_tokens, temperature=temperature)
             tokens = torch.cat([tokens, next_tokens[:, -1:]], dim=1)
             length += 1
         return tokens
