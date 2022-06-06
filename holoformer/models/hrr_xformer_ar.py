@@ -7,7 +7,6 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 import torch
 from torch import nn
 from torch.distributions import Categorical, Normal
-from torch.optim.lr_scheduler import LambdaLR
 import torch.nn.functional as F
 
 from holoformer.datasets.hf_datasets import HfDatasetDataModule
@@ -23,52 +22,19 @@ def _get_clones(module, N):
 
 
 class HolographicQKV(nn.Module):
-    def __init__(self, dims, ff_dims):
+    def __init__(self, dims, heads, causal=True, unit=True):
         super().__init__()
-        self.query = nn.Sequential(
-            nn.Linear(dims, dims),
-        #    nn.Tanh(),
-        )
-        self.key = nn.Sequential(
-            nn.Linear(dims, dims),
-        #    nn.Tanh(),
-        )
-        self.value = nn.Sequential(
-            nn.Linear(dims, dims),
-        #    nn.Tanh(),
-        )
-
-    def forward(self, x):
-        """
-        x.shape ~= (batch, sequence, embedding)
-        """
-        query = self.query(x)
-        keys = self.key(x)
-        values = self.value(x)
-        # query = hrr.unit_projection(self.query(x))
-        # keys = hrr.unit_projection(self.key(x))
-        # values = hrr.unit_projection(self.value(x))
-        x_k = hrr.bind(keys, values)
-        s = x_k.sum(dim=1, keepdim=True)
-        values = hrr.unbind(s, query)
-        return values
-
-
-class CausalHolographicQKV(nn.Module):
-    def __init__(self, dims, ff_dims, heads):
-        super().__init__()
+        self.causal = causal
+        self.unit = unit
         self.heads = heads
         self.query = nn.Sequential(
             nn.Linear(dims, dims),
-        #    nn.Tanh(),
         )
         self.key = nn.Sequential(
             nn.Linear(dims, dims),
-        #    nn.Tanh(),
         )
         self.value = nn.Sequential(
             nn.Linear(dims, dims),
-        #    nn.Tanh(),
         )
         self.apply(self.init_weights)
 
@@ -92,9 +58,13 @@ class CausalHolographicQKV(nn.Module):
             lambda x: x.view(batch, seq, self.heads, head_dims),
             (q, k, v)
         )
-        q, k, v = map(hrr.unit_projection, (q, k, v))
+        if self.unit:
+            q, k, v = map(hrr.unit_projection, (q, k, v))
         x_k = hrr.bind(k, v)
-        s = x_k.cumsum(dim=1)
+        if self.causal:
+            s = x_k.cumsum(dim=1)
+        else:
+            s = x_k.sum(dim=1)
         values = hrr.unbind(s, q)
         values = values.view(batch, seq, dims)
         return values
@@ -103,11 +73,11 @@ class CausalHolographicQKV(nn.Module):
 class HoloformerEncoderLayer(nn.Module):
     def __init__(
         self, dims, ff_dims, dropout,
-        mixer=CausalHolographicQKV, **kwargs
+        mixer=HolographicQKV, **kwargs
     ):
         super().__init__()
         self.mixer = nn.Sequential(
-            mixer(dims, ff_dims),
+            mixer(dims),
             nn.Dropout(dropout),
         )
         self.ln1 = nn.LayerNorm(dims)
@@ -131,12 +101,22 @@ class HoloformerEncoderLayer(nn.Module):
         return x
 
 
+class Dot(nn.Module):
+    def __init__(self, weights):
+        super().__init__()
+        self.weights = weights
+
+    def forward(self, x):
+        y = torch.einsum('be,ne->bn', x, self.weights)
+        return y
+
+
 class HoloformerAR(pl.LightningModule):
     """Auto-regressive holoformer"""
     def __init__(self, tokenizer, data_dims=100, ff_dims=512, layers=4,
                  lr=0.001, weight_decay=0.1, dropout=0.1,
                  activation=nn.ReLU, pad_token_id=0,
-                 update_embedding=True, lr_warmup_steps=3,
+                 update_embedding=False, lr_warmup_steps=3,
                  opt_betas=(0.9, 0.95), heads=8, max_seq_len=256,
                  **kwargs):
         super().__init__()
@@ -158,13 +138,12 @@ class HoloformerAR(pl.LightningModule):
         self.output_token = nn.Sequential(
             nn.Linear(data_dims, num_tokens)
         )
-        self.output_token.apply(self.init_weights)
 
         self.register_buffer('presence_embeddings', hrr.init_ortho(
             (2, data_dims)
         ).unsqueeze(1).unsqueeze(1))
 
-        mixer = partial(CausalHolographicQKV, heads=heads)
+        mixer = partial(HolographicQKV, heads=heads)
         transformer_layer = HoloformerEncoderLayer(
             data_dims, ff_dims, dropout=dropout, activation=activation,
             mixer=mixer
@@ -174,7 +153,7 @@ class HoloformerAR(pl.LightningModule):
         self.weight_decay = weight_decay
         self.hrr_dist = Normal(0., 1. / data_dims)
         self.update_embedding = update_embedding
-        self.ce_loss = nn.CrossEntropyLoss()
+        self.f_loss = nn.CrossEntropyLoss()
 
     def init_weights(self, m):
         if isinstance(m, nn.Linear):
@@ -228,8 +207,9 @@ class HoloformerAR(pl.LightningModule):
         all_tokens = data['input_ids'].clone()
         p_tokens = self(all_tokens[:, :-1])
         target_tokens = all_tokens[:, 1:]
-        recon_loss = F.cross_entropy(
-            p_tokens.permute(0, 2, 1), target_tokens
+        dims = p_tokens.shape[-1]
+        recon_loss = self.f_loss(
+            p_tokens.reshape(-1, dims), target_tokens.reshape(-1)
         )
 
         embedding_loss = torch.tensor(0, device=self.device)
@@ -325,6 +305,7 @@ if __name__ == '__main__':
     p.add_argument('dataset')
     p.add_argument('tokenizer_name')
     p.add_argument('--max_seq_len', default=256, type=int)
+    p.add_argument('--p_print', default=0.01, type=float)
 
     p = HoloformerAR.add_argparse_args(p)
     p = pl.Trainer.add_argparse_args(p)
@@ -348,7 +329,7 @@ if __name__ == '__main__':
 
     print('Set up Trainer')
     model_checkpoint = ModelCheckpoint()
-    callbacks = [model_checkpoint, AutoRegressiveTextBatch(p_print=0.01)]
+    callbacks = [model_checkpoint, AutoRegressiveTextBatch(p_print=args.p_print)]
     trainer = pl.Trainer.from_argparse_args(
         args, callbacks=callbacks
     )
