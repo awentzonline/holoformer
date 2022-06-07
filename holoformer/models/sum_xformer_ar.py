@@ -31,6 +31,9 @@ class SumMixer(nn.Module):
         self.mix = nn.Sequential(
             nn.Linear(head_dims * 2, head_dims),
         )
+        self.key_values = nn.Sequential(
+            nn.Linear(head_dims, head_dims),
+        )
         self.apply(self.init_weights)
 
     def init_weights(self, m):
@@ -46,14 +49,15 @@ class SumMixer(nn.Module):
         """
         batch, seq, dims = x.shape
         head_dims = dims // self.heads
-        if self.causal:
-            s = x.cumsum(dim=1)
-        else:
-            s = x.sum(dim=1)
         x = x.view(batch, seq, self.heads, head_dims)
+        key_values = self.key_values(x)
+        if self.causal:
+            s = key_values.cumsum(dim=1)
+        else:
+            s = key_values.sum(dim=1)
         s = s.view(batch, seq, self.heads, head_dims)
-        query = torch.cat([x, s], dim=-1)
-        values = self.mix(query)
+        qkv = torch.cat([x, s], dim=-1)
+        values = self.mix(qkv)
         values = values.view(batch, seq, dims)
         return values
 
