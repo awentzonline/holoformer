@@ -41,7 +41,7 @@ class HolographicQKV(nn.Module):
     def init_weights(self, m):
         if isinstance(m, nn.Linear):
             nn.init.xavier_uniform_(
-                m.weight, gain=nn.init.calculate_gain('tanh')
+                m.weight, gain=nn.init.calculate_gain('linear')
             )
             nn.init.zeros_(m.bias)
 
