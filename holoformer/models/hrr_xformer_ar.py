@@ -15,6 +15,7 @@ from holoformer.models.callbacks.ar import AutoRegressiveTextBatch
 from holoformer.models.position import (
     HolographicPositionalEncoding, PositionalEncoding
 )
+from .top_k_sampling import top_k_top_p_filtering
 
 
 def _get_clones(module, N):
@@ -80,8 +81,8 @@ class HoloformerEncoderLayer(nn.Module):
             mixer(dims),
             nn.Dropout(dropout),
         )
-        self.ln1 = nn.LayerNorm(dims)
-        self.ln2 = nn.LayerNorm(dims)
+        self.ln1 = hrr.unit_projection  #nn.LayerNorm(dims)
+        self.ln2 = hrr.unit_projection  #nn.LayerNorm(dims)
         self.mlp = nn.Sequential(
             nn.Linear(dims, 4 * dims),
             nn.GELU(),
@@ -165,9 +166,13 @@ class HoloformerAR(pl.LightningModule):
         encoded = self.encoder(embedded)
         return encoded
 
-    def outputs_to_ids(self, x, temperature=0.):
+    def outputs_to_ids(self, x, temperature=0., top_p=0.9, top_k=0.):
         if temperature:
-            dist = Categorical(logits=x / temperature)
+            x = x / temperature
+        if top_p or top_k:
+            return top_k_top_p_filtering(x, top_p=top_p, top_k=top_k)
+        elif temperature:
+            dist = Categorical(logits=x)
             return dist.sample()
         else:
             return x.argmax(-1)
