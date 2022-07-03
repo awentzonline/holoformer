@@ -170,21 +170,23 @@ class HoloformerAR(pl.LightningModule):
         if temperature:
             x = x / temperature
         if top_p or top_k:
-            return top_k_top_p_filtering(x, top_p=top_p, top_k=top_k)
+            return top_k_top_p_filtering(x[:, -1], top_p=top_p, top_k=top_k)
         elif temperature:
             dist = Categorical(logits=x)
             return dist.sample()
         else:
             return x.argmax(-1)
 
-    def generate(self, prompt, max_length=None, temperature=0.7):
+    def generate(self, prompt, max_length=None, temperature=0.0, top_p=0.9, top_k=0.):
         length = prompt.shape[1]
         if max_length is None:
             max_length = self.max_seq_len
         tokens = prompt
         while length < max_length:
             p_tokens = self(tokens)
-            next_tokens = self.outputs_to_ids(p_tokens, temperature=temperature)
+            next_tokens = self.outputs_to_ids(
+                p_tokens, temperature=temperature, top_p=top_p, top_k=top_k
+            )
             tokens = torch.cat([tokens, next_tokens[:, -1:]], dim=1)
             length += 1
         return tokens
