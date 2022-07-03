@@ -109,6 +109,7 @@ class HoloformerAR(pl.LightningModule):
                  activation=nn.ReLU, pad_token_id=0,
                  update_embedding=False, lr_warmup_steps=3,
                  opt_betas=(0.9, 0.95), heads=8, max_seq_len=256,
+                 pe_type='holo',
                  **kwargs):
         super().__init__()
         self.save_hyperparameters()
@@ -118,14 +119,18 @@ class HoloformerAR(pl.LightningModule):
         self.opt_betas = opt_betas
         self.pad_token_id = pad_token_id
         self.max_seq_len = max_seq_len
+        self.pe_type = pe_type
         self.embedding = nn.Embedding(
             len(tokenizer), data_dims, padding_idx=pad_token_id,
         )
         self.embedding.weight.data = hrr.init(self.embedding.weight.data.shape)
         self.embedding.requires_grad_(update_embedding)
 
-        self.positional_encoding = HolographicPositionalEncoding(data_dims)
-        self.positional_encoding.requires_grad_(update_embedding)
+        if pe_type == 'holo':
+            self.positional_encoding = HolographicPositionalEncoding(data_dims)
+            self.positional_encoding.requires_grad_(update_embedding)
+        else:
+            self.positional_encoding = PositionalEncoding(data_dims)
         self.output_token = nn.Sequential(
             nn.Linear(data_dims, len(tokenizer))
         )
@@ -259,7 +264,11 @@ class HoloformerAR(pl.LightningModule):
                     no_decay.add(fpn)
 
         # special case the position embedding parameter in the root GPT module as not decayed
-        no_decay.add('positional_encoding.embeddings')
+        if (
+            hasattr(self, 'positional_encoding') and
+            hasattr(self.positional_encoding, 'embeddings')
+        ):
+            no_decay.add('positional_encoding.embeddings')
 
         # validate that we considered every parameter
         param_dict = {pn: p for pn, p in self.named_parameters()}
@@ -290,6 +299,7 @@ class HoloformerAR(pl.LightningModule):
         p.add_argument('--lr_warmup_steps', default=3, type=int)
         p.add_argument('--update_embedding', action='store_true')
         p.add_argument('--opt_betas', default=(0.9, 0.95), type=parse_csv_arg(float))
+        p.add_argument('--pe_type', default='cos')
         return p
 
 
