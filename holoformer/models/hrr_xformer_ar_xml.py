@@ -54,10 +54,11 @@ class HoloformerARXML(HoloformerAR):
         p_tokens = self.encode_sequence(all_tokens[:, :-1])
         target_tokens = all_tokens[:, 1:]
         dims = p_tokens.shape[-1]
-        recon_loss = hrr_xml_loss(
+        label_loss_p, label_loss_n = hrr_xml_loss(
             p_tokens.reshape(-1, dims), target_tokens.reshape(-1),
             self.embedding
         )
+        label_loss = label_loss_p + label_loss_n
 
         embedding_loss = torch.tensor(0, device=self.device)
         positional_loss = torch.tensor(0, device=self.device)
@@ -65,10 +66,12 @@ class HoloformerARXML(HoloformerAR):
         #     embedding_loss = hrr.unit_regularization(self.embedding.weight).mean()
         #     positional_loss = self.positional_encoding.loss(all_tokens).mean()
 
-        loss = recon_loss + embedding_loss + positional_loss
+        loss = label_loss + embedding_loss + positional_loss
         metrics = dict(
             loss=loss,
-            recon_loss=recon_loss,
+            label_loss=label_loss,
+            label_loss_p=label_loss_p,
+            label_loss_n=label_loss_n,
             embedding_loss=embedding_loss,
             positional_loss=positional_loss,
         )
