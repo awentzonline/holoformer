@@ -131,9 +131,7 @@ class HoloformerAR(pl.LightningModule):
             self.positional_encoding.requires_grad_(update_embedding)
         else:
             self.positional_encoding = PositionalEncoding(data_dims)
-        self.output_token = nn.Sequential(
-            nn.Linear(data_dims, len(tokenizer))
-        )
+        self.output_token = self.get_output_head(len(tokenizer))
 
         self.register_buffer('presence_embeddings', hrr.init_ortho(
             (2, data_dims)
@@ -157,6 +155,11 @@ class HoloformerAR(pl.LightningModule):
                 m.weight, gain=nn.init.calculate_gain('leaky_relu')
             )
             nn.init.zeros_(m.bias)
+
+    def get_output_head(self, output_dims):
+        return nn.Sequential(
+            nn.Linear(self.data_dims, output_dims)
+        )
 
     def forward(self, x, **kwargs):
         encoded = self.encode_sequence(x)
@@ -289,7 +292,7 @@ class HoloformerAR(pl.LightningModule):
     @classmethod
     def add_argparse_args(self, p):
         p.add_argument('--data_dims', default=128, type=int)
-        p.add_argument('--ff_dims', default=512, type=int)
+        p.add_argument('--ff_dims', default=1024, type=int)
         p.add_argument('--heads', default=8, type=int)
         p.add_argument('--lr', default=0.001, type=float)
         p.add_argument('--weight_decay', default=0.1, type=float)
