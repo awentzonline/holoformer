@@ -17,21 +17,37 @@ from .hrr_xformer_ar import HoloformerAR
 
 
 class Dot(nn.Module):
-    def __init__(self, weights):
+    def __init__(self, weights, normalize=True):
         super().__init__()
         self.weights = weights
+        self.normalize = normalize
 
     def forward(self, x):
-        y = torch.einsum('bse,ne->bsn', x, self.weights)
+        w = self.weights
+        if self.normalize:
+            x = x / (torch.norm(x, dim=-1, keepdim=True) + 1e-8)
+            w = w / (torch.norm(w, dim=-1, keepdim=True) + 1e-8)
+        y = torch.einsum('bse,ne->bsn', x, w)
         return y
+
+
+class L2Normalize(nn.Module):
+    def forward(self, x, eps=1e-8):
+        return x / (torch.norm(x, dim=-1, keepdim=True) + 1e-8)
 
 
 class HoloformerARXML(HoloformerAR):
     """Auto-regressive holoformer"""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.output_token = Dot(self.embedding.weight)
+        self.output_token = nn.Sequential(
+            Dot(self.embedding.weight),
+        )
         self.output_token.requires_grad_(self.update_embedding)
+
+    def forward(self, x, **kwargs):
+        encoded = self.encode_sequence(x)
+        return self.output_token(encoded).abs()
 
     def _shared_step(self, data, batch_idx):
         all_tokens = data['input_ids'].clone()
