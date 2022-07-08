@@ -57,16 +57,18 @@ class HoloformerARXML(HoloformerAR):
 
     def forward(self, x, **kwargs):
         encoded = self.encode_sequence(x)
-        return self.output_token(encoded).abs()
+        p_encoded = hrr.unbind(encoded, self.presence_embeddings[0].unsqueeze(0))
+        return self.output_token(p_encoded).abs()
 
     def _shared_step(self, data, batch_idx):
         all_tokens = data['input_ids'].clone()
         p_tokens = self.encode_sequence(all_tokens[:, :-1])
         target_tokens = all_tokens[:, 1:]
         dims = p_tokens.shape[-1]
+        p, m = self.presence_embeddings
         label_loss_p, label_loss_n = hrr_xml_loss(
             p_tokens.reshape(-1, dims), target_tokens.reshape(-1),
-            self.embedding
+            self.embedding, p.unsqueeze(0), m.unsqueeze(0)
         )
         label_loss = label_loss_p + label_loss_n
 
