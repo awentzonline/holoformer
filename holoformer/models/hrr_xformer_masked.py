@@ -104,7 +104,7 @@ class HoloformerEncoderLayer(nn.Module):
         return x
 
 
-class Holoformer(pl.LightningModule):
+class HoloformerMLM(pl.LightningModule):
     """Holoformer using masked language model"""
     def __init__(self, tokenizer, data_dims=100, ff_dims=512, layers=4,
                  lr=0.001, weight_decay=0.1, dropout=0.1,
@@ -327,7 +327,7 @@ if __name__ == '__main__':
     p.add_argument('--max_seq_len', default=256, type=int)
     p.add_argument('--p_print', default=0.01, type=float)
 
-    p = Holoformer.add_argparse_args(p)
+    p = HoloformerMLM.add_argparse_args(p)
     p = pl.Trainer.add_argparse_args(p)
     args = p.parse_args()
 
@@ -340,7 +340,7 @@ if __name__ == '__main__':
     mask_token_id, pad_token_id = dm.tokenizer.convert_tokens_to_ids([
         '[MASK]', '[PAD]'
     ])
-    model = Holoformer(
+    model = HoloformerMLM(
         tokenizer=dm.tokenizer,
         num_tokens=num_tokens,
         mask_token_id=mask_token_id,
