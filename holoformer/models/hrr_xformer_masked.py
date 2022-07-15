@@ -14,6 +14,7 @@ from holoformer.models import hrr
 from holoformer.models.position import (
     HolographicPositionalEncoding, PositionalEncoding
 )
+from transformers.optimization import get_linear_schedule_with_warmup
 from .top_k_sampling import top_k_top_p_filtering
 
 
@@ -111,7 +112,8 @@ class HoloformerMLM(pl.LightningModule):
                  update_embedding=False, lr_warmup_steps=3,
                  opt_betas=(0.9, 0.95), heads=8, max_seq_len=256,
                  pe_type='holo', p_mask=0.15, p_random_mask=0.2,
-                 p_unmask=0.2, mask_token_id=1,
+                 p_unmask=0.2, mask_token_id=1, warmup_steps=0.1,
+                 total_steps=1000000,
                  **kwargs):
         super().__init__()
         self.save_hyperparameters()
@@ -292,7 +294,16 @@ class HoloformerMLM(pl.LightningModule):
             {"params": [param_dict[pn] for pn in sorted(list(no_decay))], "weight_decay": 0.0},
         ]
         optimizer = torch.optim.AdamW(optim_groups, lr=self.lr, betas=self.opt_betas)
-        return optimizer
+        scheduler = get_linear_schedule_with_warmup(
+            optimizer, num_warmup_steps=self.hparams.warmup_steps,
+            num_training_steps=self.hparams.total_steps
+        )
+        scheduler = {
+            'scheduler': scheduler,
+            'interval': 'step',
+            'frequency': 1
+        }
+        return [optimizer], [scheduler]
 
     @classmethod
     def add_argparse_args(self, p):
@@ -308,6 +319,7 @@ class HoloformerMLM(pl.LightningModule):
         p.add_argument('--update_embedding', action='store_true')
         p.add_argument('--opt_betas', default=(0.9, 0.999), type=parse_csv_arg(float))
         p.add_argument('--pe_type', default='holo')
+        p.add_argument('--warmup_steps', default=0.1, type=float)
         return p
 
 
