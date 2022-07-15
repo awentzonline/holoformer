@@ -105,8 +105,8 @@ class HoloformerEncoderLayer(nn.Module):
 
 class HoloformerMLM(pl.LightningModule):
     """Holoformer using masked language model"""
-    def __init__(self, tokenizer, data_dims=100, ff_dims=512, layers=4,
-                 lr=0.001, weight_decay=0.1, dropout=0.1,
+    def __init__(self, tokenizer, data_dims=768, ff_dims=3072, layers=4,
+                 lr=0.001, weight_decay=0.01, dropout=0.1,
                  activation=nn.ReLU, pad_token_id=0,
                  update_embedding=False, lr_warmup_steps=3,
                  opt_betas=(0.9, 0.95), heads=8, max_seq_len=256,
@@ -296,18 +296,18 @@ class HoloformerMLM(pl.LightningModule):
 
     @classmethod
     def add_argparse_args(self, p):
-        p.add_argument('--data_dims', default=128, type=int)
-        p.add_argument('--ff_dims', default=1024, type=int)
-        p.add_argument('--heads', default=8, type=int)
-        p.add_argument('--lr', default=0.0003, type=float)
-        p.add_argument('--weight_decay', default=0.1, type=float)
-        p.add_argument('--layers', default=4, type=int)
+        p.add_argument('--data_dims', default=768, type=int)
+        p.add_argument('--ff_dims', default=3072, type=int)
+        p.add_argument('--heads', default=12, type=int)
+        p.add_argument('--lr', default=0.0001, type=float)
+        p.add_argument('--weight_decay', default=0.01, type=float)
+        p.add_argument('--layers', default=12, type=int)
         p.add_argument('--dropout', default=0.1, type=float)
         p.add_argument('--batch_size', default=32, type=int)
         p.add_argument('--lr_warmup_steps', default=3, type=int)
         p.add_argument('--update_embedding', action='store_true')
-        p.add_argument('--opt_betas', default=(0.9, 0.95), type=parse_csv_arg(float))
-        p.add_argument('--pe_type', default='cos')
+        p.add_argument('--opt_betas', default=(0.9, 0.999), type=parse_csv_arg(float))
+        p.add_argument('--pe_type', default='holo')
         return p
 
 
