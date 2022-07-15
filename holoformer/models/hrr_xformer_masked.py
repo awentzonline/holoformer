@@ -11,7 +11,6 @@ import torch.nn.functional as F
 
 from holoformer.datasets.hf_datasets import HfDatasetDataModule
 from holoformer.models import hrr
-from holoformer.models.callbacks.ar import AutoRegressiveTextBatch
 from holoformer.models.position import (
     HolographicPositionalEncoding, PositionalEncoding
 )
@@ -350,7 +349,7 @@ if __name__ == '__main__':
 
     print('Set up Trainer')
     model_checkpoint = ModelCheckpoint()
-    callbacks = [model_checkpoint, AutoRegressiveTextBatch(p_print=args.p_print)]
+    callbacks = [model_checkpoint]
     trainer = pl.Trainer.from_argparse_args(
         args, callbacks=callbacks
     )
