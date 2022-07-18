@@ -49,6 +49,7 @@ class GLUEDataModule(pl.LightningDataModule):
         train_batch_size: int = None,
         eval_batch_size: int = None,
         batch_size: int = 32,
+        num_workers: int = 1,
         **kwargs
     ):
         super().__init__()
@@ -57,6 +58,8 @@ class GLUEDataModule(pl.LightningDataModule):
         self.max_seq_length = max_seq_len
         self.train_batch_size = train_batch_size or batch_size
         self.eval_batch_size = eval_batch_size or batch_size
+        self.num_workers = num_workers
+        self.persistent_workers = num_workers > 0
 
         self.text_fields = self.task_text_field_map[task_name]
         self.num_labels = self.glue_task_num_labels[task_name]
@@ -81,19 +84,40 @@ class GLUEDataModule(pl.LightningDataModule):
         AutoTokenizer.from_pretrained(self.tokenizer_name, use_fast=True)
 
     def train_dataloader(self):
-        return DataLoader(self.dataset['train'], batch_size=self.train_batch_size)
+        return DataLoader(
+            self.dataset['train'], batch_size=self.train_batch_size,
+            persistent_workers=self.persistent_workers, num_workers=self.num_workers
+        )
 
     def val_dataloader(self):
         if len(self.eval_splits) == 1:
-            return DataLoader(self.dataset['validation'], batch_size=self.eval_batch_size)
+            return DataLoader(
+                self.dataset['validation'], batch_size=self.eval_batch_size,
+                persistent_workers=self.persistent_workers, num_workers=self.num_workers
+            )
         elif len(self.eval_splits) > 1:
-            return [DataLoader(self.dataset[x], batch_size=self.eval_batch_size) for x in self.eval_splits]
+            return [
+                DataLoader(
+                    self.dataset[x], batch_size=self.eval_batch_size,
+                    persistent_workers=self.persistent_workers,
+                    num_workers=self.num_workers
+                ) for x in self.eval_splits
+            ]
 
     def test_dataloader(self):
         if len(self.eval_splits) == 1:
-            return DataLoader(self.dataset['test'], batch_size=self.eval_batch_size)
+            return DataLoader(
+                self.dataset['test'], batch_size=self.eval_batch_size,
+                persistent_workers=self.persistent_workers, num_workers=self.num_workers
+            )
         elif len(self.eval_splits) > 1:
-            return [DataLoader(self.dataset[x], batch_size=self.eval_batch_size) for x in self.eval_splits]
+            return [
+                DataLoader(
+                    self.dataset[x], batch_size=self.eval_batch_size,
+                    persistent_workers=self.persistent_workers,
+                    num_workers=self.num_workers
+                ) for x in self.eval_splits
+            ]
 
     def convert_to_features(self, example_batch, indices=None):
         # Either encode single sentence or sentence pairs
