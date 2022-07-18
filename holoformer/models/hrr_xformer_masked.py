@@ -204,13 +204,7 @@ class HoloformerMLM(pl.LightningModule):
         return losses
 
     def _shared_step(self, data, batch_idx):
-        all_tokens = data['input_ids'].clone()
-        masked_tokens, mask = self.mask_tokens(all_tokens)
-        recon_tokens = self(masked_tokens)
-        all_tokens[~mask] = -100  # Don't calculate loss for the unmasked
-        recon_loss = F.cross_entropy(
-            recon_tokens.permute(0, 2, 1), all_tokens, ignore_index=-100
-        )
+        recon_loss = self.masked_loss(data['input_ids'])
 
         embedding_loss = torch.tensor(0, device=self.device)
         positional_loss = torch.tensor(0, device=self.device)
@@ -229,6 +223,16 @@ class HoloformerMLM(pl.LightningModule):
             loss=loss
         )
         return metrics, losses
+
+    def masked_loss(self, all_tokens):
+        all_tokens = all_tokens.clone()
+        masked_tokens, mask = self.mask_tokens(all_tokens)
+        recon_tokens = self(masked_tokens)
+        all_tokens[~mask] = -100  # Don't calculate loss for the unmasked
+        recon_loss = F.cross_entropy(
+            recon_tokens.permute(0, 2, 1), all_tokens, ignore_index=-100
+        )
+        return recon_loss
 
     def mask_tokens(self, all_tokens):
         mask = torch.rand(*all_tokens.shape, device=self.device)
