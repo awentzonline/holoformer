@@ -13,15 +13,16 @@ from holoformer.datasets.glue import GLUEDataModule
 from .hrr_xformer_masked import HoloformerMLM
 
 
-class HoloformerGLUE(HoloformerMLM):
+class HoloformerGLUE(pl.LightningModule):
     """Holoformer using pre-trained masked language model to solve GLUE"""
-    def __init__(self, *args, num_labels, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, encoder, num_labels, **kwargs):
+        super().__init__()
+        self.encoder = encoder
         self.num_labels = num_labels
         self.classifier_logits = nn.Sequential(
-            nn.Linear(self.data_dims, self.data_dims * 4),
+            nn.Linear(encoder.data_dims, encoder.data_dims * 4),
             nn.LeakyReLU(),
-            nn.Linear(self.data_dims * 4, num_labels),
+            nn.Linear(encoder.data_dims * 4, num_labels),
         )
 
     def forward(self, x, **kwargs):
@@ -58,6 +59,7 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser()
     p.add_argument('task_name')
     p.add_argument('tokenizer_name')
+    p.add_argument('encoder')
     p.add_argument('--max_seq_len', default=128, type=int)
 
     p = HoloformerGLUE.add_argparse_args(p)
@@ -73,11 +75,9 @@ if __name__ == '__main__':
     mask_token_id, pad_token_id = dm.tokenizer.convert_tokens_to_ids([
         '[MASK]', '[PAD]'
     ])
+    encoder = HoloformerMLM.load_from_checkpoint(args.encoder)
     model = HoloformerGLUE(
-        tokenizer=dm.tokenizer,
-        num_tokens=num_tokens,
-        mask_token_id=mask_token_id,
-        pad_token_id=pad_token_id,
+        encoder,
         num_labels=dm.num_labels,
         **vars(args)
     )
