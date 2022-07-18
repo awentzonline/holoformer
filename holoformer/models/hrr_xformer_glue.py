@@ -11,8 +11,13 @@ from .hrr_xformer_masked import HoloformerMLM
 
 class HoloformerGLUE(pl.LightningModule):
     """Holoformer using pre-trained masked language model to solve GLUE"""
-    def __init__(self, encoder, num_labels, lr=0.0001, **kwargs):
+    def __init__(
+        self, encoder, num_labels, lr=0.0001, weight_decay=0.001,
+        warmup_steps=3, opt_betas=(0.9, 0.95), total_steps=1000000,
+        **kwargs
+    ):
         super().__init__()
+        self.save_hyperparameters(ignore='encoder')
         self.encoder = encoder
         self.num_labels = num_labels
         self.lr = lr
@@ -31,7 +36,7 @@ class HoloformerGLUE(pl.LightningModule):
             nn.init.zeros_(m.bias)
 
     def forward(self, x, **kwargs):
-        encoded = self.encode_sequence(x)
+        encoded = self.encoder.encode_sequence(x)
         logits = self.classifier_logits(encoded[:, 0])
         return logits
 
@@ -89,10 +94,10 @@ class HoloformerGLUE(pl.LightningModule):
 
         # special case the position embedding parameter in the root GPT module as not decayed
         if (
-            hasattr(self, 'positional_encoding') and
-            hasattr(self.positional_encoding, 'embeddings')
+            hasattr(self.encoder, 'positional_encoding') and
+            hasattr(self.encoder.positional_encoding, 'embeddings')
         ):
-            no_decay.add('positional_encoding.embeddings')
+            no_decay.add('encoder.positional_encoding.embeddings')
 
         # validate that we considered every parameter
         param_dict = {pn: p for pn, p in self.named_parameters()}
@@ -104,10 +109,10 @@ class HoloformerGLUE(pl.LightningModule):
 
         # create the pytorch optimizer object
         optim_groups = [
-            {"params": [param_dict[pn] for pn in sorted(list(decay))], "weight_decay": self.weight_decay},
+            {"params": [param_dict[pn] for pn in sorted(list(decay))], "weight_decay": self.hparams.weight_decay},
             {"params": [param_dict[pn] for pn in sorted(list(no_decay))], "weight_decay": 0.0},
         ]
-        optimizer = torch.optim.AdamW(optim_groups, lr=self.lr, betas=self.opt_betas)
+        optimizer = torch.optim.AdamW(optim_groups, lr=self.hparams.lr, betas=self.hparams.opt_betas)
         scheduler = get_linear_schedule_with_warmup(
             optimizer, num_warmup_steps=self.hparams.warmup_steps,
             num_training_steps=self.hparams.total_steps
@@ -121,7 +126,12 @@ class HoloformerGLUE(pl.LightningModule):
 
     @classmethod
     def add_argparse_args(self, p):
-        return super().add_argparse_args(p)
+        p.add_argument('--lr', default=0.0001, type=float)
+        p.add_argument('--weight_decay', default=0.01, type=float)
+        p.add_argument('--batch_size', default=32, type=int)
+        p.add_argument('--opt_betas', default=(0.9, 0.999), type=parse_csv_arg(float))
+        p.add_argument('--warmup_steps', default=0.1, type=float)
+        return p
 
 
 def parse_csv_arg(type_):
@@ -136,7 +146,7 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser()
     p.add_argument('task_name')
     p.add_argument('tokenizer_name')
-    p.add_argument('encoder')
+    p.add_argument('encoder_path')
     p.add_argument('--max_seq_len', default=128, type=int)
 
     p = HoloformerGLUE.add_argparse_args(p)
@@ -152,7 +162,7 @@ if __name__ == '__main__':
     mask_token_id, pad_token_id = dm.tokenizer.convert_tokens_to_ids([
         '[MASK]', '[PAD]'
     ])
-    encoder = HoloformerMLM.load_from_checkpoint(args.encoder)
+    encoder = HoloformerMLM.load_from_checkpoint(args.encoder_path)
     model = HoloformerGLUE(
         encoder,
         num_labels=dm.num_labels,
