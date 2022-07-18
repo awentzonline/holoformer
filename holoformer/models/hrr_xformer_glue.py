@@ -1,13 +1,9 @@
-import copy
-from functools import partial
-
-import numpy as np
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 import torch
 from torch import nn
-from torch.distributions import Categorical, Normal
 import torch.nn.functional as F
+from transformers.optimization import get_linear_schedule_with_warmup
 
 from holoformer.datasets.glue import GLUEDataModule
 from .hrr_xformer_masked import HoloformerMLM
@@ -15,15 +11,24 @@ from .hrr_xformer_masked import HoloformerMLM
 
 class HoloformerGLUE(pl.LightningModule):
     """Holoformer using pre-trained masked language model to solve GLUE"""
-    def __init__(self, encoder, num_labels, **kwargs):
+    def __init__(self, encoder, num_labels, lr=0.0001, **kwargs):
         super().__init__()
         self.encoder = encoder
         self.num_labels = num_labels
+        self.lr = lr
         self.classifier_logits = nn.Sequential(
             nn.Linear(encoder.data_dims, encoder.data_dims * 4),
             nn.LeakyReLU(),
             nn.Linear(encoder.data_dims * 4, num_labels),
         )
+        self.classifier_logits.apply(self.init_weights)
+
+    def init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            nn.init.xavier_uniform_(
+                m.weight, gain=nn.init.calculate_gain('linear')
+            )
+            nn.init.zeros_(m.bias)
 
     def forward(self, x, **kwargs):
         encoded = self.encode_sequence(x)
@@ -41,6 +46,78 @@ class HoloformerGLUE(pl.LightningModule):
             loss=loss
         )
         return metrics, losses
+
+    def training_step(self, batch, batch_idx):
+        metrics, losses = self._shared_step(batch, batch_idx)
+        self.log_dict(metrics)
+        return losses
+
+    def validation_step(self, batch, batch_idx):
+        metrics, losses = self._shared_step(batch, batch_idx)
+        metrics = {
+            f'val_{k}': v for k, v in metrics.items()
+        }
+        self.log_dict(metrics)
+        return losses
+
+    def configure_optimizers(self):
+        """
+        From minGPT:
+        This long function is unfortunately doing something very simple and is being very defensive:
+        We are separating out all parameters of the model into two buckets: those that will experience
+        weight decay for regularization and those that won't (biases, and layernorm/embedding weights).
+        We are then returning the PyTorch optimizer object.
+        """
+        # separate out all parameters to those that will and won't experience regularizing weight decay
+        decay = set()
+        no_decay = set()
+        whitelist_weight_modules = (torch.nn.Linear, )
+        blacklist_weight_modules = (torch.nn.LayerNorm, torch.nn.Embedding)
+        for mn, m in self.named_modules():
+            for pn, p in m.named_parameters():
+                fpn = '%s.%s' % (mn, pn) if mn else pn # full param name
+
+                if pn.endswith('bias'):
+                    # all biases will not be decayed
+                    no_decay.add(fpn)
+                elif pn.endswith('weight') and isinstance(m, whitelist_weight_modules):
+                    # weights of whitelist modules will be weight decayed
+                    decay.add(fpn)
+                elif pn.endswith('weight') and isinstance(m, blacklist_weight_modules):
+                    # weights of blacklist modules will NOT be weight decayed
+                    no_decay.add(fpn)
+
+        # special case the position embedding parameter in the root GPT module as not decayed
+        if (
+            hasattr(self, 'positional_encoding') and
+            hasattr(self.positional_encoding, 'embeddings')
+        ):
+            no_decay.add('positional_encoding.embeddings')
+
+        # validate that we considered every parameter
+        param_dict = {pn: p for pn, p in self.named_parameters()}
+        inter_params = decay & no_decay
+        union_params = decay | no_decay
+        assert len(inter_params) == 0, "parameters %s made it into both decay/no_decay sets!" % (str(inter_params), )
+        assert len(param_dict.keys() - union_params) == 0, "parameters %s were not separated into either decay/no_decay set!" \
+                                                    % (str(param_dict.keys() - union_params), )
+
+        # create the pytorch optimizer object
+        optim_groups = [
+            {"params": [param_dict[pn] for pn in sorted(list(decay))], "weight_decay": self.weight_decay},
+            {"params": [param_dict[pn] for pn in sorted(list(no_decay))], "weight_decay": 0.0},
+        ]
+        optimizer = torch.optim.AdamW(optim_groups, lr=self.lr, betas=self.opt_betas)
+        scheduler = get_linear_schedule_with_warmup(
+            optimizer, num_warmup_steps=self.hparams.warmup_steps,
+            num_training_steps=self.hparams.total_steps
+        )
+        scheduler = {
+            'scheduler': scheduler,
+            'interval': 'step',
+            'frequency': 1
+        }
+        return [optimizer], [scheduler]
 
     @classmethod
     def add_argparse_args(self, p):
