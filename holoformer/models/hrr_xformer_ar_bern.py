@@ -50,7 +50,9 @@ class HolographicQKV(nn.Module):
         self.value = nn.Sequential(
             nn.Linear(dims, dims),
         )
-        self.vecs = hrr.init((dims // heads, dims // heads))
+        self.vecs = nn.Parameter(
+            hrr.init((dims // heads, dims // heads))
+        )
         self.apply(self.init_weights)
         self.cleanup = BernoulliCleanup()
 
@@ -282,6 +284,8 @@ class HoloformerAR(pl.LightningModule):
                     decay.add(fpn)
                 elif pn.endswith('weight') and isinstance(m, blacklist_weight_modules):
                     # weights of blacklist modules will NOT be weight decayed
+                    no_decay.add(fpn)
+                elif pn.endswith('vecs'):
                     no_decay.add(fpn)
 
         # special case the position embedding parameter in the root GPT module as not decayed
