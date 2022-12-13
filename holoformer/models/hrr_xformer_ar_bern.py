@@ -15,6 +15,7 @@ from holoformer.models.callbacks.ar import AutoRegressiveTextBatch
 from holoformer.models.position import (
     HolographicPositionalEncoding, PositionalEncoding
 )
+from .hrr_bern import HRRBernoulliSampler
 from .top_k_sampling import top_k_top_p_filtering
 
 
@@ -31,8 +32,9 @@ class BernoulliCleanup(nn.Module):
         probs = torch.matmul(x, vecs).abs()
         dist = Bernoulli(probs=probs)
         x_sample = dist.sample()
-        x_hat = torch.matmul(x_sample, vecs)
-        return (x_hat - x).detach() + x
+        probs = (x_sample - probs).detach() + probs
+        x_hat = torch.matmul(probs, vecs)
+        return x_hat
 
 
 class HolographicQKV(nn.Module):
@@ -50,11 +52,8 @@ class HolographicQKV(nn.Module):
         self.value = nn.Sequential(
             nn.Linear(dims, dims),
         )
-        self.vecs = nn.Parameter(
-            hrr.init((dims // heads, dims // heads))
-        )
         self.apply(self.init_weights)
-        self.cleanup = BernoulliCleanup()
+        self.filter_symbols = HRRBernoulliSampler(dims, dims)
 
     def init_weights(self, m):
         if isinstance(m, nn.Linear):
@@ -69,6 +68,7 @@ class HolographicQKV(nn.Module):
         """
         batch, seq, dims = x.shape
         head_dims = dims // self.heads
+        x = self.filter_symbols(x, norm_x=True)
         q = self.query(x)
         k = self.key(x)
         v = self.value(x)
@@ -84,7 +84,6 @@ class HolographicQKV(nn.Module):
         else:
             s = x_k.sum(dim=1)
         values = hrr.unbind(s, q)
-        values = self.cleanup(values, self.vecs)
         values = values.view(batch, seq, dims)
         return values
 
@@ -365,7 +364,10 @@ if __name__ == '__main__':
 
     print('Set up Trainer')
     model_checkpoint = ModelCheckpoint()
-    callbacks = [model_checkpoint, AutoRegressiveTextBatch(p_print=args.p_print)]
+    callbacks = [
+        # model_checkpoint,
+        AutoRegressiveTextBatch(p_print=args.p_print)
+    ]
     trainer = pl.Trainer.from_argparse_args(
         args, callbacks=callbacks
     )
